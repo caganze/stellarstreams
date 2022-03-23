@@ -48,7 +48,7 @@ H = gp.Hamiltonian(pot)
 
 #PARAMETERS FOR PREFERED LENGTH AT 10 KPC
 TF10=1500*u.Myr
-TCOL10=1000*u.Myr
+TCOL10=900*u.Myr
 
 STREAM_CONFIGURATION_10={'stream_coord':gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc, y=0.2* u.kpc,z=15*u.kpc, \
                                                 v_x=-45*u.km/u.s, v_y=-138*u.km/u.s, v_z=-12.5*u.km/u.s,\
@@ -61,7 +61,7 @@ STREAM_CONFIGURATION_10={'stream_coord':gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc
                       'dt': 1*u.Myr,
                       'nsteps':200,
                       'nstars': 5000,
-                      'distance_to_hit': 1.5,
+                      'distance_to_hit': 0.5,
                       'file_prefix': 'mass_1_times_pal5_rgc10' }
 
 
@@ -211,7 +211,7 @@ def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_e
 
     return gen.run(prog_w0, prog_mass, nbody=nbody,\
                    output_every=output_every, output_filename= output_filename, \
-                check_filesize=True, overwrite=True, n_particles=int(0.5*nstars/len(timedict['t'])),  progress=True, **timedict)
+                check_filesize=True, overwrite=True, n_particles=int(nstars/len(timedict['t'])),  progress=True, **timedict)
 
 def run_stream_and_subhalo(halo_mass, stream_mass, halo_r, halo_pos, stream_pos, timedict,
                            filename='mockstream',
@@ -321,18 +321,18 @@ def plot_stream_and_body(idx, stream_cont, body, time_dict,  coll_pos):
     
     fig, (ax, ax1, ax2)=plt.subplots(figsize=(12, 4), ncols=3)
     
-    fig.suptitle('T = {}  Timesetep = {}'.format(t,idx ), fontsize=16)
+    fig.suptitle('T = {:.0f} Myr '.format(t.value,idx ), fontsize=16)
 
     
     ax.scatter(stream_pos[0][idx], stream_pos[1][idx], s=1, c='k', alpha=0.5, vmin=-5, vmax=1, cmap='cividis')
-    ax.scatter(body_pos[0][idx], body_pos[1][idx],  s=100, alpha=0.5, c=['b', 'r'], label='Particle')
+    ax.scatter(body_pos[0][idx][-1], body_pos[1][idx][-1],  s=300, alpha=0.5, c=['b'], label='Particle')
     
     
     ax1.scatter(stream_pos[0][idx], stream_pos[-1][idx],  s=1, c='k', alpha=0.5, vmin=-5, vmax=1,cmap='cividis')
-    ax1.scatter(body_pos[0][idx], body_pos[-1][idx],  s=100, alpha=0.5, c=['b', 'r'], label='Particle')
+    ax1.scatter(body_pos[0][idx][-1], body_pos[-1][idx][-1],  s=300, alpha=0.5, c=['b'], label='Subhalo')
     
     c=ax2.scatter(stream_pos[1][idx], stream_pos[-1][idx],  s=1, c='k', alpha=0.5, vmin=-5, vmax=1, cmap='cividis')
-    ax2.scatter(body_pos[1][idx], body_pos[-1][idx],  s=100, alpha=0.5, c=['b', 'r'], label='Particle')
+    ax2.scatter(body_pos[1][idx][-1], body_pos[-1][idx][-1],  s=300, alpha=0.5, c=['b'], label='Subhalo')
     
    
     
@@ -350,9 +350,9 @@ def plot_stream_and_body(idx, stream_cont, body, time_dict,  coll_pos):
     x=stream_pos[0][idx]
     y=stream_pos[1][idx]
     z=stream_pos[-1][idx]
-    xlim=[np.nanmean(x)-5*np.nanstd(x), np.nanmean(x)+5*np.nanstd(x)]
-    ylim=[np.nanmean(y)-5*np.nanstd(y), np.nanmean(y)+5*np.nanstd(y)]
-    zlim=[np.nanmean(z)-5*np.nanstd(z), np.nanmean(z)+5*np.nanstd(z)]
+    xlim=[np.nanmean(x)-5, np.nanmean(x)+5]
+    ylim=[np.nanmean(y)-5, np.nanmean(y)+5]
+    zlim=[np.nanmean(z)-5, np.nanmean(z)+5]
 
     #ax.set(xlim= xlim, ylim=ylim)
     #ax1.set(xlim=xlim, ylim=zlim)
@@ -671,14 +671,14 @@ def run_bunch_streams(STREAM_CONFIGURATION):
         #rhalos=1005*((mhalos/10**8)**0.5)
 
 
-        vmax=100 #20 is a good but we get two gaps
-        mhalo=5*10**6
+        vmax=-50 #20 is a good but we get two gaps
+        mhalo=10**6
         #rhalo=1
         rhalo=1005*((mhalo/10**8)**0.5)
         #rhalo=0.01
 
         filename=STREAM_CONFIGURATION['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_rshalo{:.2f}_angle{:.1f}'.format(mhalo, vmax, rhalo, angle)
-        run_one_stream(STREAM_CONFIGURATION, float(vmax), mhalo, rhalo, angle=angle, visualize_collision=True, filename=filename, \
+        run_one_stream(STREAM_CONFIGURATION, float(vmax), mhalo, rhalo, angle=angle, visualize_collision=False, filename=filename, \
                          add_more_stars=True)
         hi
 
@@ -693,7 +693,42 @@ def run_bunch_streams(STREAM_CONFIGURATION):
 
         return 
 
+def run_stream_intact(STREAM_CONFIGURATION):
 
+    st_pos= STREAM_CONFIGURATION['stream_coord']
+    dt= STREAM_CONFIGURATION['dt']
+    tfinal=STREAM_CONFIGURATION['tfinal']
+    mstream=STREAM_CONFIGURATION['mstream']
+    tcollision=STREAM_CONFIGURATION['tcollision']
+    NSTARS=STREAM_CONFIGURATION['nstars']
+    textra=STREAM_CONFIGURATION['textra']
+    NSTEPS=STREAM_CONFIGURATION['nsteps']
+    NSTARS=STREAM_CONFIGURATION['nstars']
+    DX= STREAM_CONFIGURATION['distance_to_hit']
+
+    time_dict= {'dt':-dt, 't1':0.*u.Myr, 't2':-tcollision}
+    df = ms.FardalStreamDF()
+    prog_mass =    mstream * u.Msun
+
+    gen = ms.MockStreamGenerator(df, H)
+
+    mock_st, cent=gen.run( st_pos, prog_mass,  ** time_dict,
+                                            nbody=None, progress=True, \
+                                            n_particles= int(1.5*NSTARS/((tcollision/(dt)).value)))
+
+    filename='orgininal'+STREAM_CONFIGURATION['file_prefix']
+    final_stream_coord=SkyCoord(x= mock_st.xyz[0],\
+                                y= mock_st.xyz[1],\
+                                z= mock_st.xyz[-1],\
+                                v_x=mock_st.v_xyz[0],\
+                                v_y= mock_st.v_xyz[1],\
+                                v_z=mock_st.v_xyz[-1],\
+                               frame=galcen_frame)
+    final_data={'stream': final_stream_coord, 'prog': cent}
+    np.save(path_data+'/{}.npy'.format(filename), final_data)
+
+    return 
 if __name__ =='__main__':
     #for st_config in [STREAM_CONFIGURATION_10, STREAM_CONFIGURATION_30, STREAM_CONFIGURATION_50]:
+    #run_stream_intact(STREAM_CONFIGURATION_10)
     run_bunch_streams(STREAM_CONFIGURATION_10)
