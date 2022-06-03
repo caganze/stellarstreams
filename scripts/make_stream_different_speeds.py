@@ -36,7 +36,8 @@ _ = astro_coord.galactocentric_frame_defaults.set('v4.0')
 
 #galactocentric reference frame
 v_sun = astro_coord.CartesianDifferential([11.1, 220 + 24.0, 7.25]*u.km/u.s)
-galcen_frame =astro_coord.Galactocentric(galcen_distance=8.*u.kpc,
+
+galcen_frame =astro_coord.Galactocentric(galcen_distance=8.1*u.kpc,
                                     galcen_v_sun=v_sun)
 
 #potential
@@ -47,14 +48,25 @@ H = gp.Hamiltonian(pot)
 #stream configuration (by trial and error)
 
 #PARAMETERS FOR PREFERED LENGTH AT 10 KPC
-TF10=1500*u.Myr
+TF10=2500*u.Myr
 TCOL10=900*u.Myr
 
-STREAM_CONFIGURATION_10={'stream_coord':gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc, y=0.2* u.kpc,z=15*u.kpc, \
-                                                v_x=-45*u.km/u.s, v_y=-138*u.km/u.s, v_z=-12.5*u.km/u.s,\
-                                                 frame=galcen_frame).cartesian),
+#palomar 5 present day coordinates
+c= astro_coord.ICRS(ra=229.0264*u.degree,dec=-0.1368*u.degree,
+                  distance=22.5*u.kpc,
+                  pm_ra_cosdec=-2.21*u.mas/u.yr,
+                  pm_dec=-2.23*u.mas/u.yr,
+                  radial_velocity=-56.2*u.km/u.s)
+
+cg= c.transform_to(galcen_frame)
+
+#previous orbit gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc, y=0.2* u.kpc,z=15*u.kpc, \
+#                                                v_x=-45*u.km/u.s, v_y=-138*u.km/u.s, v_z=-12.5*u.km/u.s,\
+#                                                 frame=galcen_frame).cartesian
+
+STREAM_CONFIGURATION_10={'stream_coord':gd.PhaseSpacePosition(cg),
                       'col_angle':  np.pi/100,
-                      'mstream': 1*3e4*u.Msun,
+                      'mstream': 5e4*u.Msun,
                      'tfinal': TF10,
                       'tcollision': TCOL10,
                       'textra': 30*u.Myr,
@@ -66,9 +78,7 @@ STREAM_CONFIGURATION_10={'stream_coord':gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc
 
 
 
-STREAM_CONFIGURATION_30={'stream_coord':gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc, y=0.2* u.kpc,z=30*u.kpc, \
-                                                v_x=-45*u.km/u.s, v_y=-138*u.km/u.s, v_z=-12.5*u.km/u.s,
-                                                 frame=galcen_frame).cartesian),
+STREAM_CONFIGURATION_30={'stream_coord':gd.PhaseSpacePosition(cg),
                       'col_angle':  np.pi/100,
                       'mstream': 1*3e4*u.Msun,
                      'tfinal':  TF10*10/8,
@@ -79,9 +89,7 @@ STREAM_CONFIGURATION_30={'stream_coord':gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc
                       'nstars': 2000,
                       'file_prefix': 'mass_1_times_pal5_rgc30' }
 
-STREAM_CONFIGURATION_50={'stream_coord':gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc, y=0.2* u.kpc,z=50*u.kpc, \
-                                                v_x=150*u.km/u.s, v_y=150*u.km/u.s, v_z=0*u.km/u.s,\
-                                                 frame=galcen_frame).cartesian),
+STREAM_CONFIGURATION_50={'stream_coord':gd.PhaseSpacePosition(cg),
                       'col_angle':  np.pi/100,
                       'mstream': 1*3e4*u.Msun,
                     'tfinal':  TF10*12/8,
@@ -518,6 +526,8 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         
 
         print ('True relative velocity {}'.format(np.nansum( (stream_velocity-full_halo_vel.value)**2)**0.5))
+        print ('True relative velocity {}'.format(stream_velocity-full_halo_vel.value))
+        #hgj
         
     
         #compute the phase space position for collision
@@ -658,7 +668,7 @@ def run_bunch_streams(STREAM_CONFIGURATION):
         #vmaxs=[1, 2, 3, 4, 5, 6, 10, 50, 70, 100, 150, 200] #kms
         #mhalos=np.array([ 1e5, 1e6, 1.5e6, 3e6, 5e6, 7e6, 8e7, 1e7, 2e7, 5e7, 7e7, 8e7, 1e8])
         vmaxs=[50, 100, 200]
-        mhalos=np.array([1e6, 5e6, 1e7, 1e8])
+        mhalos=np.array([1e6, 2e6, 5e6, 1e7])
         rhalos=1005*((mhalos/10**8)**0.5)
         #something ain't right
         #rhalos=0.01*np.ones_like(mhalos)
@@ -672,24 +682,11 @@ def run_bunch_streams(STREAM_CONFIGURATION):
 
 
         vmax=-50 #20 is a good but we get two gaps
-        mhalo=10**6
-        #rhalo=1
-        rhalo=1005*((mhalo/10**8)**0.5)
-        #rhalo=0.01
-
-        filename=STREAM_CONFIGURATION['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_rshalo{:.2f}_angle{:.1f}'.format(mhalo, vmax, rhalo, angle)
-        run_one_stream(STREAM_CONFIGURATION, float(vmax), mhalo, rhalo, angle=angle, visualize_collision=False, filename=filename, \
-                         add_more_stars=True)
-        hi
-
-        if True:
-            for vmax in vmaxs:
-                for mhalo, rhalo in zip(mhalos, rhalos):
-                    filename=STREAM_CONFIGURATION['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_rshalo{:.2f}_angle{:.1f}'.format(mhalo, vmax, rhalo, angle)
-                    print (filename)
-                    #print ('mhalo {} Msun, rhalo {} pc'.format(mhalo, rhalo))
-                    run_one_stream(STREAM_CONFIGURATION, vmax, mhalo, rhalo, angle=angle, visualize_collision=False, filename=filename, \
-                         add_more_stars=True)
+        for mhalo, rhalo in zip(mhalos, rhalos):
+            filename=STREAM_CONFIGURATION['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_rshalo{:.2f}_angle{:.1f}'.format(mhalo, vmax, rhalo, angle)
+            print (filename) 
+            run_one_stream(STREAM_CONFIGURATION, float(vmax), mhalo, rhalo, angle=angle, visualize_collision=False, filename=filename, \
+                             add_more_stars=True)
 
         return 
 
@@ -706,7 +703,7 @@ def run_stream_intact(STREAM_CONFIGURATION):
     NSTARS=STREAM_CONFIGURATION['nstars']
     DX= STREAM_CONFIGURATION['distance_to_hit']
 
-    time_dict= {'dt':-dt, 't1':0.*u.Myr, 't2':-tcollision}
+    time_dict= {'dt':-dt, 't1':0.*u.Myr, 't2':-tfinal}
     df = ms.FardalStreamDF()
     prog_mass =    mstream * u.Msun
 
@@ -730,5 +727,5 @@ def run_stream_intact(STREAM_CONFIGURATION):
     return 
 if __name__ =='__main__':
     #for st_config in [STREAM_CONFIGURATION_10, STREAM_CONFIGURATION_30, STREAM_CONFIGURATION_50]:
-    #run_stream_intact(STREAM_CONFIGURATION_10)
+    run_stream_intact(STREAM_CONFIGURATION_10)
     run_bunch_streams(STREAM_CONFIGURATION_10)

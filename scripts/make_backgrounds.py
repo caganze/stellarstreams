@@ -366,16 +366,14 @@ def run_background(WFIRSTlimits, dist_mod_And, distrange):
 	ascii.write(t, outfile, format='fixed_width', delimiter='',overwrite = True)
 
 
-
 if __name__ =='__main__':
 
-	d=([0.5, 0.6, 0.77, 0.8, 0.9, 1.0, 2., 2.5, 3., 3.5, 4., 4.5, 5.])*u.Mpc
+	d=([0.5, 0.6, 0.77, 0.8, 0.9, 1.0, 1.3, 1.5, 1.6, 1.7, 2., 2.5, 3., 3.5, 4., 4.5, 5.])*u.Mpc
 	dmods=5*np.log10(d.to(u.pc)/(10*u.pc)).value
-	maglimits=[26, 30]
+	maglimits=[27.15, 28.54]
 	for dmod in dmods:
 		for m in maglimits:
-			run_background(m, dmod, '10_20')
-			run_background(m, dmod, '30_40')
-			run_background(m, dmod, '50_60')
-
+				run_background(m, dmod, '50_60')
+			#run_background(m, dmod, '30_40')
+			#run_background(m, dmod, '50_60')
 
