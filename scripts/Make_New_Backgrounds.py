@@ -26,7 +26,8 @@ plot_style()
 import warnings
 warnings.filterwarnings("ignore")
 import glob
-get_ipython().run_line_magic('matplotlib', 'inline')
+from tqdm import tqdm
+#get_ipython().run_line_magic('matplotlib', 'inline')
 
 
 # In[2]:
@@ -38,8 +39,6 @@ path_pandas= '/users/caganze/research/stellarstreams/data/pandas/'
 
 mag_keys=['gmag', 'imag', 'F062mag', 'F087mag']
 
-
-# In[3]:
 
 
 def read_pandas_isochrones():
@@ -77,7 +76,9 @@ def interpolate_isochrones(mass_range, age_range, met_range, nsample):
     query='(Mini > {} & Mini <{}) & (logAge > {} & logAge <  {}) & (MH > {} & MH < {})'.format(*limits)
     isos=isos.query(query)
 
-    masses=sample_kroupa_imf(2*nsample, massrange=mass_range)
+    nisos_=len(np.unique(isos.MH))*len(np.unique(isos.logAge))
+
+    masses=sample_kroupa_imf(nsample/nisos_, massrange=mass_range)
     
     @numba.jit
     def interpolate_one_iso(masses, age, met):
@@ -91,7 +92,7 @@ def interpolate_isochrones(mass_range, age_range, met_range, nsample):
         return interpolated
     
     final_df=[]
-    for logAge in np.unique(isos.logAge):
+    for logAge in tqdm(np.unique(isos.logAge)):
         for MH in np.unique(isos.MH):
             vs=pd.DataFrame(interpolate_one_iso(masses, logAge,  MH))
             vs['logAge']=logAge
@@ -219,10 +220,13 @@ def simulate(rgc, nsample):
     print ('currrent number of MW stars in simulation {}'.format(nsim_mw_bounds))
     
     #re-simulate M31 and MW with the right number(not great for time saving )
-    m31_final=m31.sample(int((ndata_m31_bounds/nsim_m31_bounds)*nsample), replace=True)
-    #simulate_M31(d_M31, nsample=int((ndata_m31_bounds/nsim_m31_bounds)*nsample))
-    #mw_final=simulate_milky_way(nsample=int(  (ndata_mw_bounds/nsim_mw_bounds)*nsample))
-    mw_final=mw.sample(int((ndata_mw_bounds/nsim_mw_bounds)*nsample), replace=True)
+    #m31_final=m31.sample(int((ndata_m31_bounds/nsim_m31_bounds)*nsample), replace=True)
+    m31_final=simulate_M31(d_M31, nsample=int((ndata_m31_bounds/nsim_m31_bounds)*nsample))
+    mw_final=simulate_milky_way(nsample=int(  (ndata_mw_bounds/nsim_mw_bounds)*nsample))
+    #mw_final=mw.sample(int((ndata_mw_bounds/nsim_mw_bounds)*nsample), replace=True)
+
+    m31_final['g-i']= m31_final.appgmag-m31_final.appimag
+    mw_final['g-i']= mw_final.appgmag-mw_final.appimag
 
     
     #verify that we have reached the target number of stars within the bins
@@ -242,8 +246,8 @@ def simulate(rgc, nsample):
     
     #plot
     fig, (ax, ax1)=plt.subplots(ncols=2, figsize=(12, 4), sharey=True)
-    ax.scatter(m31_final_small['g-i'], m31_final_small.appimag,  s=1, marker=',', alpha=0.1, color='k')
-    ax.scatter(mw_final_small['g-i'], mw_final_small.appimag,  s=1, marker=',', alpha=0.1, color='k')
+    ax.scatter(m31_final_small['g-i'], m31_final_small.appimag,  s=1, marker=',', alpha=0.01, color='k')
+    ax.scatter(mw_final_small['g-i'], mw_final_small.appimag,  s=1, marker=',', alpha=0.01, color='k')
 
     ax1.scatter(data.g-data.i, data.i,  s=1, marker=',', alpha=0.01, color='k')
     ax1.invert_yaxis()
@@ -253,14 +257,11 @@ def simulate(rgc, nsample):
     plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc))
     
     #save
-    filename='/simulated_df_at_M31_normalized_extended_rgc{}'.format(rgc)
+    filename=path_isochrones+'/simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
     
     m31_final['galaxy']='M31'
-    mq_final['galaxy']='MW'
+    mw_final['galaxy']='MW'
     pd.concat([m31_final, mw_final]).to_csv(filename)
-
-
-# In[ ]:
 
 
 d_M31=770*u.kpc
@@ -270,58 +271,4 @@ for rgc in ['10_20', '30_40', '50_60']:
     #to move to another galaxy ---> the number of stars are normalized correct
     #just add the offset in distance modulus to the CMD
     #make roman cuts 
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
 

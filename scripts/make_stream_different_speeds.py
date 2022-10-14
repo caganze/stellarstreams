@@ -7,105 +7,89 @@ from gala.units import galactic
 from astropy.coordinates import SkyCoord, Distance
 #import popsims
 import matplotlib.pyplot as plt
-#%matplotlib notebook
-from tqdm import tqdm
-from astropy.constants import G
-#import HSS
-from gala.units import galactic
-import gala.coordinates as gc
-import  h5py
-import imageio
-import seaborn as sns
-import matplotlib as mpl
-import matplotlib.animation as animation
+from popsims.plot_style import  plot_style
+from astropy.coordinates import SkyCoord
 import astropy.coordinates as astro_coord
-sns.set_style("dark")
-mpl.rc('xtick', labelsize=16) 
-mpl.rc('ytick', labelsize=16) 
-font = {'axes.titlesize'      : 'large',   # fontsize of the axes title
-        'axes.labelsize'      : 'large', # fontsize of the x any y labels
-        'size'   : 16}
-#plt.style.use('dark_background')
-import itertools
-#paths
-path_plot = '/users/caganze/research/stellarstreams/figures/stream/'
-path_data = '/users/caganze/research/stellarstreams/data/stream/'
+import astropy.units as u
+from tqdm import tqdm
+from popsims.galaxy import Disk, Halo, GalacticComponent
+import popsims
+from gala.units import UnitSystem
+
+plot_style()
+
+path_plot = '/users/caganze/research/stellarstreams/figures/'
+path_data= '/users/caganze/research/stellarstreams/data/stream/'
 
 #coords standards
 _ = astro_coord.galactocentric_frame_defaults.set('v4.0')
 
-#galactocentric reference frame
-v_sun = astro_coord.CartesianDifferential([11.1, 220 + 24.0, 7.25]*u.km/u.s)
+#unit system
+usys = UnitSystem(u.kpc, u.Gyr, u.radian, u.Msun)
 
-galcen_frame =astro_coord.Galactocentric(galcen_distance=8.1*u.kpc,
-                                    galcen_v_sun=v_sun)
+def get_nfw_profile_from_M200_c(M200, c, rho_c=None):
+        """
+        from_M200_c(M200, c, rho_c=None, units=None, origin=None, R=None)
 
-#potential
+        Initialize an NFW potential from a virial mass, ``M200``, and a
+        concentration, ``c``.
 
-pot=gp.MilkyWayPotential()
+        Parameters
+        ----------
+        M200 : :class:`~astropy.units.Quantity`, numeric [mass]
+            Virial mass, or mass at 200 times the critical density, ``rho_c``.
+        c : numeric
+            NFW halo concentration.
+        rho_c : :class:`~astropy.units.Quantity`, numeric [density]
+            Critical density at z=0. If not specified, uses the default astropy
+            cosmology to obtain this, `~astropy.cosmology.default_cosmology`.
+        """
+        if rho_c is None:
+            from astropy.constants import G
+            from astropy.cosmology import default_cosmology
+
+            cosmo = default_cosmology.get()
+            #hubble constant
+            rho_c = (3 * cosmo.H(0.0) ** 2 / (8 * np.pi * G)).to(
+                u.Msun / u.kpc ** 3
+            )
+
+        Rvir = np.cbrt(M200 / (200 * rho_c) / (4.0 / 3 * np.pi)).to(u.kpc)
+        r_s = Rvir / c
+
+        A_NFW = np.log(1 + c) - c / (1 + c)
+        m = M200 / A_NFW
+
+        return gp.NFWPotential(m=m.to(u.kg), r_s=r_s.to(u.km), a=1.0, b=1.0, c=1.0, units=  usys)
+
+#global potential
+disk=gp.MiyamotoNagaiPotential(6.9e10*u.Msun, 6.5*u.kpc, 0.26*u.kpc,units=  usys)
+halo=get_nfw_profile_from_M200_c(0.7e12*u.Msun, 10**1.5)
+bulge=gp.HernquistPotential(3.4e10*u.Msun, 0.7*u.kpc, units=  usys)
+pot= gp.CCompositePotential(disk=disk, bulge=bulge, halo=halo)
 H = gp.Hamiltonian(pot)
 
-#stream configuration (by trial and error)
+#galactocentric reference frame
+v_sun = astro_coord.CartesianDifferential([8.4, 251.8, 8.4]*u.km/u.s)
+galcen_frame = astro_coord.Galactocentric(galcen_distance=8.275*u.kpc, galcen_v_sun=v_sun)
 
-#PARAMETERS FOR PREFERED LENGTH AT 10 KPC
-TF10=2500*u.Myr
-TCOL10=900*u.Myr
 
 #palomar 5 present day coordinates
-c= astro_coord.ICRS(ra=229.0264*u.degree,dec=-0.1368*u.degree,
-                  distance=22.5*u.kpc,
-                  pm_ra_cosdec=-2.21*u.mas/u.yr,
-                  pm_dec=-2.23*u.mas/u.yr,
-                  radial_velocity=-56.2*u.km/u.s)
+pal5_c = astro_coord.SkyCoord(ra=229.022*u.degree, dec= -0.112*u.degree,#vasiliev 2019
+                   distance=20.6*u.kpc,#APW 2019
+                   pm_ra_cosdec= -2.736*u.mas/u.yr, #vasiliev 2019
+                   pm_dec=-2.646*u.mas/u.yr, #vasiliev 2019
+                   radial_velocity= -58.60*u.km/u.s)#vasiliev 2019
 
-cg= c.transform_to(galcen_frame)
-
-#previous orbit gd.PhaseSpacePosition(SkyCoord(x=6*u.kpc, y=0.2* u.kpc,z=15*u.kpc, \
-#                                                v_x=-45*u.km/u.s, v_y=-138*u.km/u.s, v_z=-12.5*u.km/u.s,\
-#                                                 frame=galcen_frame).cartesian
-
-STREAM_CONFIGURATION_10={'stream_coord':gd.PhaseSpacePosition(cg),
-                      'col_angle':  np.pi/100,
-                      'mstream': 5e4*u.Msun,
-                     'tfinal': TF10,
-                      'tcollision': TCOL10,
-                      'textra': 30*u.Myr,
-                      'dt': 1*u.Myr,
-                      'nsteps':200,
-                      'nstars': 5000,
-                      'distance_to_hit': 0.5,
-                      'file_prefix': 'mass_1_times_pal5_rgc10' }
+cg= pal5_c.transform_to(galcen_frame)
 
 
 
-STREAM_CONFIGURATION_30={'stream_coord':gd.PhaseSpacePosition(cg),
-                      'col_angle':  np.pi/100,
-                      'mstream': 1*3e4*u.Msun,
-                     'tfinal':  TF10*10/8,
-                      'tcollision':  TCOL10*10/8,
-                      'textra': 30*u.Myr,
-                      'dt': 1*u.Myr,
-                      'nsteps': 200,
-                      'nstars': 2000,
-                      'file_prefix': 'mass_1_times_pal5_rgc30' }
-
-STREAM_CONFIGURATION_50={'stream_coord':gd.PhaseSpacePosition(cg),
-                      'col_angle':  np.pi/100,
-                      'mstream': 1*3e4*u.Msun,
-                    'tfinal':  TF10*12/8,
-                      'tcollision':  TCOL10*12/8,
-                      'textra': 30*u.Myr,
-                      'dt': 1*u.Myr,
-                      'nsteps': 200,
-                      'nstars': 2000,
-                      'file_prefix': 'mass_1_times_pal5_rgc50' }
-
-#function definitions
-def evolve_orbits_only_as_null(st_coord, time_dict, units):
+def evolve_orbits_only_as_null(st_coord, time_dict):
     #evolve stream and nbody for a short period without releasing any stars
-    particle_pot = [ [gp.NullPotential(units=units)] * st_coord.shape[0]][0]
+    particle_pot = [ [gp.NullPotential(units=usys)] * st_coord.shape[0]][0]
     
-    nbody = gd.DirectNBody(st_coord, particle_pot, external_potential=pot, save_all=True)
+    nbody = gd.DirectNBody(st_coord, particle_pot, external_potential=pot, save_all=True, units=  usys)
 
     return  nbody.integrate_orbit(**time_dict)
 
@@ -136,15 +120,11 @@ def get_perturber_w0_at_impact(site_at_impact_w0, psi, v_rho, v_z, vpsi):
 
     # Define the velocity in the cylindrical impact coordinates:
     #maybe we want this to have the same vz as the stream?
-    perturber_vel = astro_coord.CylindricalDifferential(
-        d_rho=v_rho,
-        d_phi=vpsi,
-        d_z=v_z)
+    perturber_vel = astro_coord.CylindricalDifferential(d_rho=v_rho,d_phi=vpsi,d_z=v_z)
 
     # Transform from the cylindrical impact coordinates to Galactocentric
     perturber_rep = perturber_pos.with_differentials(perturber_vel)
-    perturber_rep = perturber_rep.represent_as(
-        astro_coord.CartesianRepresentation, astro_coord.CartesianDifferential)
+    perturber_rep = perturber_rep.represent_as(astro_coord.CartesianRepresentation, astro_coord.CartesianDifferential)
     perturber_rep = perturber_rep.transform(R.T)
 
     pos = perturber_rep.without_differentials() + site_at_impact_w0.pos
@@ -202,8 +182,7 @@ def plot_stream(mock_st, mock_pos, collision_pos, collision_vel, halo_vel, filen
     plt.tight_layout()
     plt.savefig(path_plot +'/unpeturbed'+filename+'.jpeg')
 
-def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_every=None,
-                                  output_filename=None, nstars=1000):
+def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_every=None, output_filename=None, nstars=1000):
     """
     Input: mass of the progenitor, its position, other mockstream generator kwrargs
     Returns: final stream and its position and velocity
@@ -219,11 +198,9 @@ def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_e
 
     return gen.run(prog_w0, prog_mass, nbody=nbody,\
                    output_every=output_every, output_filename= output_filename, \
-                check_filesize=True, overwrite=True, n_particles=int(nstars/len(timedict['t'])),  progress=True, **timedict)
+                check_filesize=True, overwrite=True,  progress=True, **timedict)
 
-def run_stream_and_subhalo(halo_mass, stream_mass, halo_r, halo_pos, stream_pos, timedict,
-                           filename='mockstream',
-                            output_every=1, potential_type='plummer', nstars=1000):
+def run_stream_and_subhalo(halo_mass, stream_mass, halo_r, halo_pos, stream_pos, timedict,filename='mockstream',output_every=1, potential_type='plummer', nstars=1000):
     """
     runs a subhalo and a stream 
     
@@ -234,18 +211,17 @@ def run_stream_and_subhalo(halo_mass, stream_mass, halo_r, halo_pos, stream_pos,
     """
     
     #create a plummer sphere 
-    point_potential=gp.PlummerPotential(halo_mass*u.Msun,  halo_r*u.pc, units=galactic)
+    point_potential=gp.PlummerPotential(halo_mass*u.Msun,  halo_r*u.pc, units=usys)
     
     #if potential_type
     if  potential_type.lower()=='hern':
-        point_potential=gp.HernquistPotential(halo_mass*u.Msun,  halo_r*u.pc, units=galactic)
+        point_potential=gp.HernquistPotential(halo_mass*u.Msun,  halo_r*u.pc, units=usys)
         
     #create an Nbody potential object
     Massive_body=gd.DirectNBody(halo_pos, [point_potential], external_potential=pot)
-    
     return  generate_stream_and_perturber(stream_mass,  stream_pos, timedict, \
-                                      nbody=Massive_body,
-                                      nstars=nstars,
+                                      nbody=Massive_body,\
+                                      nstars=nstars,\
                                     output_every=output_every, \
                                     output_filename=path_data+'/'+filename+'.h5')
 
@@ -393,7 +369,7 @@ def rotate(x, y, ang):
     """
     
     #rotation matrix
-    r=[[np.cos(ang), -np.sin(ang)],
+    r=[[np.cos(ang), -np.sin(ang)],\
        [np.sin(ang), np.cos(ang)]]
     
     c=(0, 0)
@@ -410,7 +386,7 @@ def rotate(x, y, ang):
     
     return rotated[0], rotated[1] 
 
-def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collision=False, angle=np.pi/6, filename=None,  \
+def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collision=False, filename=None,  \
                 add_more_stars=False):
         
         #integrate the orbit back
@@ -433,8 +409,12 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #generate stream at -tmax+tcollision
         df = ms.FardalStreamDF()
         gen = ms.MockStreamGenerator(df, H)
-        mock_st, mock_pos=gen.run( pos_tf, mstream, dt=dt, t1=0*u.Myr, t2= tcollision ,\
-                                            nbody=None, n_particles=int(NSTARS/((tcollision/(dt)).value)), progress=True,   release_every=1)
+
+        print (tcollision)
+
+        mock_st, mock_pos=gen.run( st_pos, mstream, dt=30*u.Myr, t1=0*u.Myr, t2= tcollision, n_particles=int(NSTARS/((tcollision/(dt)).value)), release_every=1)
+        print (mock_st)
+
 
 
         #visualize point of stream + partcile collisitions
@@ -472,14 +452,12 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
 
         impact_site= np.logical_and(impact_bool1, impact_bool0)
 
-        print (impact_site)
-
         site_at_impact_w0=gd.PhaseSpacePosition(pos=np.mean(mock_st.pos[impact_site], axis=0), \
                                           vel=np.mean(mock_st.vel[impact_site], axis=0))
         #print (col_idx)
         collision_pos=site_at_impact_w0.xyz.value
         stream_velocity=site_at_impact_w0.v_xyz.to(u.km/u.s).value
-        if True:
+        if False:
     
             fig, ax=plt.subplots(ncols=2, figsize=(12, 4))
             
@@ -536,7 +514,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #print ('halo impact velocity {} '.format(full_halo_vel))
         #print ('halo mass {:.2e} '.format(mhalo))
 
-        collision_phase_space_pos=gd.PhaseSpacePosition(pos=collision_pos,
+        collision_phase_space_pos=gd.PhaseSpacePosition(pos=collision_pos,\
                                         vel=full_halo_vel)
 
         #the halo  to a time  equal to collision time 
@@ -547,14 +525,14 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         time_dict= {'t':np.linspace(0*u.Myr, tcollision+textra, NSTEPS)}
 
         #integrate subhalo and stream in time 
-        collision_halo_pos=gd.PhaseSpacePosition(pos=collision_orbit.xyz[:,-1],
+        collision_halo_pos=gd.PhaseSpacePosition(pos=collision_orbit.xyz[:,-1],\
                                       vel=collision_orbit.v_xyz[:,-1])
 
-        stream_pos_t0=gd.PhaseSpacePosition(pos=orbit_tf[-1].xyz,
+        stream_pos_t0=gd.PhaseSpacePosition(pos=orbit_tf[-1].xyz,\
                                       vel=orbit_tf[-1].v_xyz)
 
         col_stream, col_pos =  run_stream_and_subhalo(mhalo, mstream, halo_r, collision_halo_pos, \
-                                                   stream_pos_t0 ,  time_dict,
+                                                   stream_pos_t0 ,  time_dict,\
                                    filename=filename,   potential_type='hern', nstars=STREAM_CONFIGURATION['nstars'])
         #plot the collision
         #plot_orbit_history(filename,   collision_phase_space_pos)
@@ -581,9 +559,9 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         time_dict_total={'t1': 0*u.Myr, 't2': tfinal-(tcollision+textra), 'dt': dt}
 
         #integrate individual stars
-        final_col_stream_pos=gd.PhaseSpacePosition(pos=col_stream.xyz,
+        final_col_stream_pos=gd.PhaseSpacePosition(pos=col_stream.xyz,\
                                                    vel=col_stream.v_xyz)
-        final_progen_pos=gd.PhaseSpacePosition(pos=col_pos.xyz,
+        final_progen_pos=gd.PhaseSpacePosition(pos=col_pos.xyz,\
                                                    vel=col_pos.v_xyz)
 
         old_stream_orbit=gp.Hamiltonian(pot).integrate_orbit(final_col_stream_pos,  **time_dict_total)
@@ -592,24 +570,22 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #round it approximate to avoid issue with floating points
         use_pos= gd.PhaseSpacePosition(pos=final_progen_pos[0].xyz, \
             vel=final_progen_pos[0].v_xyz)
-        print (use_pos)
-        print (time_dict_total)
+    
 
         #generate additional stars at the center 
-        mock_st_additional, _=gen.run( use_pos, mstream,  **time_dict_total,
-                                            nbody=None, progress=True, \
-                                            n_particles= int(NSTARS/((tcollision/(dt)).value)))
+        mock_st_additional, _=gen.run( use_pos, mstream,  **time_dict_total,\
+                                            nbody=None,  n_particles= int(NSTARS/((tcollision/(dt)).value)))
         #add streams at final position
         #combine old a new
         #save and plot out the final stream
         
 
-        final_stream_coord=SkyCoord(x=old_stream_orbit.x[-1],
-                                    y=old_stream_orbit.y[-1],
-                                    z=old_stream_orbit.z[-1], 
-                                    v_x=old_stream_orbit.v_x[-1], 
-                                    v_y=old_stream_orbit.v_y[-1],
-                                    v_z=old_stream_orbit.v_z[-1], 
+        final_stream_coord=SkyCoord(x=old_stream_orbit.x[-1],\
+                                    y=old_stream_orbit.y[-1],\
+                                    z=old_stream_orbit.z[-1],
+                                    v_x=old_stream_orbit.v_x[-1], \
+                                    v_y=old_stream_orbit.v_y[-1],\
+                                    v_z=old_stream_orbit.v_z[-1], \
                            frame=galcen_frame)
 
         if add_more_stars:
@@ -660,36 +636,6 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #save the data
         np.save(path_data+'/{}.npy'.format(filename), final_data)
 
-
-def run_bunch_streams(STREAM_CONFIGURATION):
-        """
-        run a bunch of streams by changing their masses and velocities
-        """
-        #vmaxs=[1, 2, 3, 4, 5, 6, 10, 50, 70, 100, 150, 200] #kms
-        #mhalos=np.array([ 1e5, 1e6, 1.5e6, 3e6, 5e6, 7e6, 8e7, 1e7, 2e7, 5e7, 7e7, 8e7, 1e8])
-        vmaxs=[50, 100, 200]
-        mhalos=np.array([1e6, 2e6, 5e6, 1e7])
-        rhalos=1005*((mhalos/10**8)**0.5)
-        #something ain't right
-        #rhalos=0.01*np.ones_like(mhalos)
-        angle= np.pi/10
-
-
-        #for random streams
-        #vmaxs=np.random.uniform(10, 200, 10)
-        #mhalos= 10**np.random.uniform(5, 8, 10)
-        #rhalos=1005*((mhalos/10**8)**0.5)
-
-
-        vmax=-50 #20 is a good but we get two gaps
-        for mhalo, rhalo in zip(mhalos, rhalos):
-            filename=STREAM_CONFIGURATION['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_rshalo{:.2f}_angle{:.1f}'.format(mhalo, vmax, rhalo, angle)
-            print (filename) 
-            run_one_stream(STREAM_CONFIGURATION, float(vmax), mhalo, rhalo, angle=angle, visualize_collision=False, filename=filename, \
-                             add_more_stars=True)
-
-        return 
-
 def run_stream_intact(STREAM_CONFIGURATION):
 
     st_pos= STREAM_CONFIGURATION['stream_coord']
@@ -710,7 +656,7 @@ def run_stream_intact(STREAM_CONFIGURATION):
     gen = ms.MockStreamGenerator(df, H)
 
     mock_st, cent=gen.run( st_pos, prog_mass,  ** time_dict,
-                                            nbody=None, progress=True, \
+                                            nbody=None, \
                                             n_particles= int(1.5*NSTARS/((tcollision/(dt)).value)))
 
     filename='orgininal'+STREAM_CONFIGURATION['file_prefix']
@@ -724,8 +670,36 @@ def run_stream_intact(STREAM_CONFIGURATION):
     final_data={'stream': final_stream_coord, 'prog': cent}
     np.save(path_data+'/{}.npy'.format(filename), final_data)
 
-    return 
-if __name__ =='__main__':
-    #for st_config in [STREAM_CONFIGURATION_10, STREAM_CONFIGURATION_30, STREAM_CONFIGURATION_50]:
-    run_stream_intact(STREAM_CONFIGURATION_10)
-    run_bunch_streams(STREAM_CONFIGURATION_10)
+def run_streams(rgc, mhalo, vhalo):
+    #scale radius
+    halo_r=1005*((mhalo/10**8)**0.5)
+
+    #positions for streams at 15 kpc, 35 kpc and 55 kpc
+    pos_tf=gd.PhaseSpacePosition(cg.cartesian)
+    pos_tf_35=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value, pos_tf.y.to(u.kpc).value, (pos_tf.z+20*u.kpc).to(u.kpc).value]*u.kpc, \
+                                    vel=pos_tf.v_xyz)
+    pos_tf_55=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value, pos_tf.y.to(u.kpc).value, (pos_tf.z+40*u.kpc).to(u.kpc).value]*u.kpc, \
+                                    vel=pos_tf.v_xyz)
+
+    init_positions={'10_20': pos_tf, '30_40': pos_tf_35, '50_60': pos_tf_55}
+    intergation_times={'10_20': 2.*u.Gyr, '30_40': 3.5*u.Gyr, '50_60': 4*u.Gyr}
+
+
+    STREAM_CONFIGURATION={'stream_coord':  init_positions[rgc],
+                          'mstream': 5e4*u.Msun,
+                         'tfinal': 4.0*u.Gyr,
+                          'tcollision': 0.7*u.Gyr,
+                          'textra': 30*u.Myr,
+                          'dt': 100*u.Myr,
+                          'distance_to_hit': 0.2,
+                          'nstars':5000,
+                          'nsteps': 200,
+                          'file_prefix': 'pal5_rgc15' }
+    STREAM_CONFIGURATION['file_prefix']='pal5_rgc15_intact' 
+
+    run_stream_intact(STREAM_CONFIGURATION)
+
+
+if __name__=='__main__':
+    run_streams('10_20', 1e7, -50)
+
