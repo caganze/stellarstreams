@@ -40,7 +40,6 @@ path_pandas= '/users/caganze/research/stellarstreams/data/pandas/'
 mag_keys=['gmag', 'imag', 'F062mag', 'F087mag']
 
 
-
 def read_pandas_isochrones():
     from astropy.io import ascii
     return ascii.read(path_isochrones+'/cfht_pre2014_isochrones.txt').to_pandas()
@@ -183,9 +182,6 @@ class M31Halo(GalacticComponent):
         return s**self.gamma
 
 
-# In[4]:
-
-
 def simulate(rgc, nsample):
     m31=simulate_M31(d_M31, nsample=nsample)
     mw=simulate_milky_way(nsample=nsample)
@@ -252,8 +248,8 @@ def simulate(rgc, nsample):
     ax1.scatter(data.g-data.i, data.i,  s=1, marker=',', alpha=0.01, color='k')
     ax1.invert_yaxis()
 
-    ax.set(xlim=[-1, 4.5])
-    ax1.set(xlim=[-1, 4.5])
+    ax.set(xlim=[-1, 4.5], title='Simulation', xlabel='g-i', ylabel='i')
+    ax1.set(xlim=[-1, 4.5],  title='Pandas Data', xlabel='g-i', ylabel='i')
     plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc))
     
     #save
@@ -261,7 +257,13 @@ def simulate(rgc, nsample):
     
     m31_final['galaxy']='M31'
     mw_final['galaxy']='MW'
-    pd.concat([m31_final, mw_final]).to_csv(filename)
+    total_final_df=pd.concat([m31_final, mw_final]).reset_index(drop=True)
+
+    #assign RA and DEC?
+     total_final_df
+
+    total_final_df.to_csv(filename)
+
 
 
 d_M31=770*u.kpc
