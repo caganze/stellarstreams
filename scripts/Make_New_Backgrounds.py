@@ -250,6 +250,8 @@ def simulate(rgc, nsample):
 
     ax.set(xlim=[-1, 4.5], title='Simulation', xlabel='g-i', ylabel='i')
     ax1.set(xlim=[-1, 4.5],  title='Pandas Data', xlabel='g-i', ylabel='i')
+
+    plt.tigh_layout()
     plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc))
     
     #save
@@ -260,7 +262,6 @@ def simulate(rgc, nsample):
     total_final_df=pd.concat([m31_final, mw_final]).reset_index(drop=True)
 
     #assign RA and DEC?
-     total_final_df
 
     total_final_df.to_csv(filename)
 

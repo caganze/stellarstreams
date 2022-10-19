@@ -64,10 +64,10 @@ pos_tf_55=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value, pos_tf.y.to(u.kpc
 init_positions={'10_20': pos_tf, '30_40': pos_tf_35, '50_60': pos_tf_55}
 
 intergation_times={'10_20': {'tfinal':2.*u.Gyr, 'tcol':700*u.Myr, 'dt': 1.*u.Myr, 'textra': 30*u.Myr}, \
-                    '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1500*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr},\
-                    '50_60': {'tfinal':3.5*u.Gyr, 'tcol':2000.*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr}}
+                    '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1700*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr},\
+                    '50_60': {'tfinal':3.5*u.Gyr, 'tcol':1700.*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr}}
 
-distances_to_hit={'10_20': 0.5, '30_40': 0.5, '50_60': 0.5}
+distances_to_hit={'10_20': 0.5, '30_40': 1., '50_60': 1.}
 
 #function definitions
 def evolve_orbits_only_as_null(st_coord, time_dict, units):
@@ -189,7 +189,7 @@ def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_e
 
     return gen.run(prog_w0, prog_mass, nbody=nbody,\
                    output_every=output_every, output_filename= output_filename, \
-                check_filesize=True, overwrite=True, n_particles=int(nstars/len(timedict['t'])),  progress=True, **timedict)
+                check_filesize=True, overwrite=True, n_particles=10,  progress=True, **timedict)
 
 def run_stream_and_subhalo(halo_mass, stream_mass, halo_r, halo_pos, stream_pos, timedict,
                            filename='mockstream',
@@ -404,8 +404,9 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         df = ms.FardalStreamDF()
         pal5_pot = gp.PlummerPotential(m= mstream, b=4*u.pc, units=usys)
         gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
+        #int(NSTARS/((tcollision/(dt)).value))
         mock_st, mock_pos=gen.run( pos_tf, mstream, dt=dt, t1=0*u.Myr, t2= tcollision ,\
-                                            nbody=None, n_particles=int(NSTARS/((tcollision/(dt)).value)), progress=True,   release_every=1)
+                                            nbody=None, n_particles=10, progress=True,   release_every=1)
 
 
         #visualize point of stream + partcile collisitions
@@ -433,38 +434,73 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
 
 
         #choose impact position somewhere in the tail
-        impact_bool1= (((mock_st.x.value-mock_pos.x.value)**2+
+        leading_arm= mock_st.z.value>mock_pos.z.value
+        diff=(((mock_st.x.value-mock_pos.x.value)**2+
                                             (mock_st.y.value-mock_pos.y.value)**2+
-                                            (mock_st.z.value-mock_pos.z.value)**2)**0.5) >=DX
+                                            (mock_st.z.value-mock_pos.z.value)**2)**0.5)
+        #fig, ax=plt.subplots()
+        #plt.hist(diff)
+        #plt.show()
 
-        impact_bool0= (((mock_st.x.value-mock_pos.x.value)**2+
-                                            (mock_st.y.value-mock_pos.y.value)**2+
-                                            (mock_st.z.value-mock_pos.z.value)**2)**0.5) <=DX+0.05
+        #impact_bool1= (((mock_st.x.value-mock_pos.x.value)**2+
+        #                                    (mock_st.y.value-mock_pos.y.value)**2+
+        #                                    (mock_st.z.value-mock_pos.z.value)**2)**0.5) >=DX
 
-        impact_site= np.logical_and(impact_bool1, impact_bool0)
+        #impact_bool0= (((mock_st.x.value-mock_pos.x.value)**2+
+        #                                    (mock_st.y.value-mock_pos.y.value)**2+
+        #                                    (mock_st.z.value-mock_pos.z.value)**2)**0.5) <=(DX+0.05)
 
-        print (impact_site)
+        #add extra requireement that it has to be in the leading arm
+        impact_site=np.logical_and(np.isclose(diff, DX, rtol=0.1), leading_arm)
+        #add aextra 
+        #fig, ax=plt.subplots()
+        #ax.scatter(mock_st.pos.x[leading_arm], mock_st.pos.y[leading_arm])
+        #ax.scatter(mock_st.pos.x[impact_site], mock_st.pos.y[impact_site], s=100)
+        #plt.show()
 
-        site_at_impact_w0=gd.PhaseSpacePosition(pos=np.mean(mock_st.pos[impact_site], axis=0), \
-                                          vel=np.mean(mock_st.vel[impact_site], axis=0))
-        #print (col_idx)
+        #print (np.mean(mock_st.pos.x[impact_site]))
+        #print (np.mean(mock_st.pos.y[impact_site]))
+        #print (np.mean(mock_st.pos.z[impact_site]))
+        #impact_site_pos=[np.mean(mock_st.pos.x[impact_site]),\
+        #                    np.mean(mock_st.pos.y[impact_site]), \
+        #                    np.mean(mock_st.pos.z[impact_site])]
+
+        print (np.mean(mock_st.vel[impact_site]))
+        print (np.mean(mock_st.pos[impact_site]))
+        #impact_site_vel=[np.mean(mock_st.vel.x[impact_site]),\
+        #                    np.mean(mock_st.vel.y[impact_site]), \
+        #                    np.mean(mock_st.vel.z[impact_site])]
+
+        #impact_site= np.logical_and(impact_bool1, impact_bool0)
+        #jkl
+
+        site_at_impact_w0=gd.PhaseSpacePosition(pos=np.mean(mock_st.pos[impact_site]), \
+                                          vel=np.mean(mock_st.vel[impact_site]))
+     
         collision_pos=site_at_impact_w0.xyz.value
         stream_velocity=site_at_impact_w0.v_xyz.to(u.km/u.s).value
+
+        print (DX)
+        print (mock_pos.xyz.value)
+        print (collision_pos)
+        print ((mock_pos.x.value-collision_pos[0]))
+        print ((mock_pos.y.value-collision_pos[1]))
+        print ((mock_pos.z.value-collision_pos[-1]))
+
         if True:
     
             fig, ax=plt.subplots(ncols=2, figsize=(12, 4))
             
-            ax[0].scatter(mock_st.x, mock_st.z, s=10)
-            ax[1].scatter(mock_st.y, mock_st.z, s=10)
+            ax[0].scatter(mock_st.x, mock_st.y, s=10)
+            ax[1].scatter(mock_st.x, mock_st.z, s=10)
 
-            ax[0].scatter(collision_pos[0], collision_pos[-1],\
-             s=100, marker='x')
-            ax[1].scatter(collision_pos[1], collision_pos[-1],s=100, marker='x')
-            ax[0].set(xlabel='x', ylabel='z')
-            ax[1].set(xlabel='y', ylabel='z')
+            ax[0].scatter(collision_pos[0], collision_pos[1],\
+             s=500, marker='x')
+            ax[1].scatter(collision_pos[0], collision_pos[-1],s=500, marker='x')
+            ax[0].set(xlabel='x', ylabel='y')
+            ax[1].set(xlabel='x', ylabel='z')
 
             plt.savefig(path_plot +'/collision'+filename+'.jpeg')
-         
         #collision position for (x=10, y=10) kpc
         #collision_pos=STREAM_CONFIGURATION['col_position']
         #stream_velocity=STREAM_CONFIGURATION['col_velocity']
@@ -569,7 +605,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #generate additional stars at the center 
         mock_st_additional, _=gen.run( use_pos, mstream,  **time_dict_total,
                                             nbody=None, progress=True, \
-                                            n_particles= int(NSTARS/((tcollision/(dt)).value)))
+                                            n_particles= 10)
         #add streams at final position
         #combine old a new
         #save and plot out the final stream
@@ -650,9 +686,12 @@ def run_bunch_streams(rgc):
         vmax=-50
         mhalos=np.array([1e7, 5e6, 2e6])
         rhalos=1005*((mhalos/10**8)**0.5)
-        for mhalo, rhalo in zip(mhalos, rhalos):
-            filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}'.format(mhalo, vmax)
-            run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
+        #rhalos=0.1*((mhalos/10**8)**0.5)
+        for d in [0.1, 0.5, 1., 2., 3., 4]:
+            for mhalo, rhalo in zip(mhalos, rhalos):
+                S['distance_to_hit']=d
+                filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
+                run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
 
         run_stream_intact(S)
 
