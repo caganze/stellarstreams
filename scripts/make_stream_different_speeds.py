@@ -16,6 +16,8 @@ from popsims.galaxy import Disk, Halo, GalacticComponent
 import popsims
 from gala.units import UnitSystem
 from popsims.plot_style import  plot_style
+import h5py
+import imageio
 
 #paths
 path_plot = '../figures/stream_collisions'
@@ -67,7 +69,7 @@ intergation_times={'10_20': {'tfinal':2.*u.Gyr, 'tcol':700*u.Myr, 'dt': 1.*u.Myr
                     '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1700*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr},\
                     '50_60': {'tfinal':3.5*u.Gyr, 'tcol':1700.*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr}}
 
-distances_to_hit={'10_20': 0.5, '30_40': 1., '50_60': 1.}
+distances_to_hit={'10_20': 0.5, '30_40': 1., '50_60': .5}
 
 #function definitions
 def evolve_orbits_only_as_null(st_coord, time_dict, units):
@@ -185,7 +187,7 @@ def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_e
     prog_mass = mass # * u.Msun
     print (prog_mass)
     pal5_pot = gp.PlummerPotential(m= prog_mass, b=4*u.pc, units=usys)
-    gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
+    gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
 
     return gen.run(prog_w0, prog_mass, nbody=nbody,\
                    output_every=output_every, output_filename= output_filename, \
@@ -350,7 +352,7 @@ def plot_stream_and_body(idx, stream_cont, body, time_dict,  coll_pos):
     # Used to return the plot as an image rray
     fig.canvas.draw()       # draw the canvas, cache the renderer
     image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
-    image  = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    #image  = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
 
 
@@ -403,7 +405,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #generate stream at -tmax+tcollision
         df = ms.FardalStreamDF()
         pal5_pot = gp.PlummerPotential(m= mstream, b=4*u.pc, units=usys)
-        gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
+        gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
         #int(NSTARS/((tcollision/(dt)).value))
         mock_st, mock_pos=gen.run( pos_tf, mstream, dt=dt, t1=0*u.Myr, t2= tcollision ,\
                                             nbody=None, n_particles=10, progress=True,   release_every=1)
@@ -582,7 +584,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
                                [ plot_stream_and_body(i, stream_all, bdy_all,  time_dict,\
                                 collision_pos) for i in \
                                                  steps], \
-                               fps=5)
+                               fps=5, format = 'GIF-PIL')
 
         #integrate in time for the remaining time until to reach total of tfinal
         time_dict_total={'t1': 0*u.Myr, 't2': tfinal-(tcollision+textra), 'dt': dt}
@@ -681,7 +683,7 @@ def run_bunch_streams(rgc):
                       'nsteps':500,
                       'nstars': 5000,
                       'distance_to_hit': distances_to_hit[rgc],
-                      'file_prefix': 'pal5_rgc{}'.format(rgc) }
+                      'file_prefix': 'pal5_rgc{}_no_selfgrav'.format(rgc) }
 
         vmax=-50
         mhalos=np.array([1e7, 5e6, 2e6])
@@ -691,7 +693,7 @@ def run_bunch_streams(rgc):
             for mhalo, rhalo in zip(mhalos, rhalos):
                 S['distance_to_hit']=d
                 filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
-                run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
+                run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=True, filename=filename, add_more_stars=True)
 
         run_stream_intact(S)
 
@@ -713,7 +715,7 @@ def run_stream_intact(STREAM_CONFIGURATION):
     prog_mass =    mstream 
     print (prog_mass)
     pal5_pot = gp.PlummerPotential(m= prog_mass, b=4*u.pc, units=usys)
-    gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
+    gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
     mock_st, cent=gen.run( st_pos, prog_mass,  ** time_dict,
                                             nbody=None, progress=True, \
                                             n_particles= int(1.5*NSTARS/((tcollision/(dt)).value)))

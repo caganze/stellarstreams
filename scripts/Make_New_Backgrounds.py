@@ -87,17 +87,26 @@ def interpolate_isochrones(mass_range, age_range, met_range, nsample):
             x= np.log10(dfn.Mini.values)
             y= dfn[k].values
             nans=np.logical_or(np.isnan(x), np.isnan(y))
-            interpolated.update({k:griddata(x[~nans], y[~nans], np.log10(masses) , fill_value=np.nan, method='linear', rescale=False)})
+            # 
+            f=interp1d(x[~nans], y[~nans], fill_value =np.nan, bounds_error=False)(np.log10(masses))
+            interpolated.update({k: f})
+            #interpolated.update({k:griddata(x[~nans], y[~nans], np.log10(masses) , fill_value=np.nan, method='linear', rescale=False)})
         return interpolated
     
     final_df=[]
     for logAge in tqdm(np.unique(isos.logAge)):
-        for MH in np.unique(isos.MH):
-            vs=pd.DataFrame(interpolate_one_iso(masses, logAge,  MH))
-            vs['logAge']=logAge
-            vs['MH']=MH
-            vs['Mini']=masses
-            final_df.append(vs)
+        try:
+            for MH in np.unique(isos.MH):
+                xvs=interpolate_one_iso(masses, logAge,  MH)
+                vs=pd.DataFrame.from_records(xvs)
+                vs['logAge']=logAge
+                vs['MH']=MH
+                vs['Mini']=masses
+                final_df.append(vs)
+                print ('finished, {} {}'.format(logAge, MH))
+        except:
+                print ('failed, {} {}'.format(logAge, MH))
+                continue
     
     return  pd.concat(final_df).sample(int(nsample), replace=True).reset_index(drop=True)
 
@@ -250,9 +259,8 @@ def simulate(rgc, nsample):
 
     ax.set(xlim=[-1, 4.5], title='Simulation', xlabel='g-i', ylabel='i')
     ax1.set(xlim=[-1, 4.5],  title='Pandas Data', xlabel='g-i', ylabel='i')
-
-    plt.tigh_layout()
-    plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc))
+    x
+    plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc), bbox_inches='tight')
     
     #save
     filename=path_isochrones+'/simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
