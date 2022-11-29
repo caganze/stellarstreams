@@ -1,12 +1,12 @@
 #imorts 
 import astropy.units as u
 import numpy as np
-import gala.potential as gp
-import gala.dynamics as gd
+#import gala.potential as gp
+#import gala.dynamics as gd
 from astropy.coordinates import SkyCoord, Distance
 #import popsims
 import matplotlib.pyplot as plt
-from popsims.plot_style import  plot_style
+#from popsims.plot_style import  plot_style
 from astropy.coordinates import SkyCoord
 import astropy.coordinates as astro_coord
 from popsims import sample_from_powerlaw
@@ -18,9 +18,11 @@ from easyshapey import Box
 from scipy.interpolate import interp1d, griddata
 from findthegap.gapper import Gapper
 import torch
+import itertools
 #paths
-
-plot_style()
+import numba 
+import jax #use jax.jit instead of numba --> might change for 
+#plot_style()
 
 path_isochrone='../data/isochrones/'
 path_data='../data/images/'
@@ -30,44 +32,91 @@ path_pandas= '../data/pandas/'
 path_plot='../figures/'
 
 
-gap_centers={'10_20': (2.5, 6.), '30_40': (2.5, 6.), '50_60': (2.5, 6)}
-rotation_angles={'10_20': -20.*u.degree.to(u.radian),
-            '30_40': -20.*u.degree.to(u.radian),
-            '50_60': -20.*u.degree.to(u.radian)}
-
 mag_keys=['gmag', 'imag', 'F062mag', 'F087mag']
 
-#read stream
-def read_stream_file(N_pal5, gap_center, box, rgc, mhalo, vhalo, rotate_by=-np.pi/8):
+#read strem
+def read_stream_file(N_pal5, gap_center, box, rgc, mhalo, vhalo,    distance_to_hit =0.5):
     
     #filename='pal5_rgc{}_mhalo{:.2e}_vhalo{:.0f}'.format(rgc, mhalo, vhalo)
-    distance_to_hit =0.5
-    filename='pal5_rgc{}_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(rgc, mhalo, vhalo, distance_to_hit )
+ 
+    #filename='pal5_rgc{}_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(rgc, mhalo, vhalo, distance_to_hit )
+    filename='pal5_rgc{}_no_selfgrav_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(rgc, mhalo, vhalo, distance_to_hit )
     st=(np.load(path_streamdata+'/{}.npy'.format(filename), allow_pickle=True).flatten()[0])['stream']
     
-    x=st.y.value
-    y=st.x.value
+    x0=st.y.value
+    y0=st.x.value
 
-    
     center=np.nanmedian(np.array(rgc.split('_')).astype(float))
-    
-    xshift= np.nanmedian(x)-gap_center[0]
-    yshift=np.nanmedian(y)-gap_center[1]
-    
-    x0=x-xshift
-    y0=y-yshift
-    
-    x0, y0= rotate(x0, y0, rotate_by, c=(np.nanmedian(x0), np.nanmedian(y0)))
-    
+
+    #deptermine optimal rotation angle by fitting a line to the half stream
+    mask= (x0-np.nanmedian(x0))>0.
+    line = np.polyfit(x0[mask], y0[mask], 1)
+    angle=np.arctan(line[0])
+    x0, y0=rotate(x0, y0, -angle, c=(np.nanmedian(x0), np.nanmedian(y0)))
+
     xshift= np.nanmedian(x0)-center
     yshift=np.nanmedian(y0)-center
+
+    x=x0-xshift
+    y=y0-yshift
+
+    xshift=gap_center[0]
+    yshift=gap_center[1]
+
+    x=x-xshift
+    y=y-yshift
     
-    x0=x0-xshift
-    y0=y0-yshift
+    choose=np.random.choice(np.arange(len(x)), N_pal5)
     
-    choose=np.random.choice(np.arange(len(x0)), N_pal5)
+    return box.select(np.array([x[choose], y[choose]]))
     
-    return box.select(np.array([x0[choose], y0[choose]]))
+def count_pal5_stars_old(mag_limit, dmod):
+    import scipy.interpolate as interp
+    dmod_pal5=16.85
+
+    cfht_mini = np.loadtxt(isochrone_path+'/Isochrone_CFHT_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [2])
+    cfht_gmag = np.loadtxt(isochrone_path+'/Isochrone_CFHT_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [24])
+    cfht_imag = np.loadtxt(isochrone_path+'/Isochrone_CFHT_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [25])
+    wfirst_mini = np.loadtxt(isochrone_path+'/Isochrone_WFIRST_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [2])
+    wfirst_mags = np.loadtxt(isochrone_path+'/Isochrone_WFIRST_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [23,24,25,26,27,28,29])
+
+    sample_lowmasses=sample_from_powerlaw(-0.5, xmin=np.min(cfht_mini), xmax=np.max(cfht_mini), nsample=int(1e6))
+    inter_gmags = interp.interp1d(cfht_mini, cfht_gmag)
+    inter_imags = interp.interp1d(cfht_mini, cfht_imag)
+    inter_Rmags = interp.interp1d(wfirst_mini, wfirst_mags[:,0])
+    inter_Zmags = interp.interp1d(wfirst_mini, wfirst_mags[:,1])
+    inter_Ymags = interp.interp1d(wfirst_mini, wfirst_mags[:,2])
+    inter_Jmags = interp.interp1d(wfirst_mini, wfirst_mags[:,3])
+    inter_Hmags = interp.interp1d(wfirst_mini, wfirst_mags[:,4])
+    inter_Fmags = interp.interp1d(wfirst_mini, wfirst_mags[:,5])
+    inter_Wmags = interp.interp1d(wfirst_mini, wfirst_mags[:,6])
+
+    if np.sum(sample_lowmasses < np.min(cfht_mini)) > 0 or np.sum(sample_lowmasses > np.max(cfht_mini)) > 0:
+        print("outside of interpolation range based on the CFHT-parsec SSP file. Need to resolve this.")
+    else:
+        #CFHT magnitudes
+        sample_gmags = inter_gmags(sample_lowmasses) +  dmod_pal5  #distance modulus Pal5
+        sample_imags = inter_imags(sample_lowmasses) +  dmod_pal5 #distance modulus Pal5
+        #WFIRST magnitudes
+        sample_Rmags = inter_Rmags(sample_lowmasses) +  dmod_pal5  #distance modulus Pal5
+        sample_Zmags = inter_Zmags(sample_lowmasses)+  dmod_pal5 #distance modulus Pal5
+        sample_Ymags = inter_Ymags(sample_lowmasses)  +  dmod_pal5
+        sample_Jmags = inter_Jmags(sample_lowmasses)+  dmod_pal5  #distance modulus Pal5
+        sample_Hmags = inter_Hmags(sample_lowmasses) +  dmod_pal5 #distance modulus Pal5
+        sample_Fmags = inter_Fmags(sample_lowmasses)+  dmod_pal5 #distance modulus Pal5
+        sample_Wmags = inter_Wmags(sample_lowmasses) +  dmod_pal5 #distance modulus Pal5
+
+        #renormalize the luminosity function by computing a normalization factor
+        num_20_23= len(sample_gmags[np.logical_and(sample_gmags>=20, sample_gmags<=23)])
+        print ('number of stars between 20 and 23 G mag {}'.format( num_20_23))
+
+        norm= 3000/num_20_23
+
+        #compute the difference between distance moduli and offset stars
+        dist_mod_And = dmod-dmod_pal5
+        #offset_Zmags= sample_Zmags+  dist_mod_And
+        nstars_wfirst = (len(np.where((sample_Zmags < mag_limit-dist_mod_And  ))[0]))*norm
+        return  nstars_wfirst
     
 def read_cmd_file(df, rgc, d_galaxy, mag_limit):
     d_m31= 770*u.kpc
@@ -113,78 +162,84 @@ def read_cmd_file(df, rgc, d_galaxy, mag_limit):
 def boostrap_density_estimate(gapper_base, bw, grid_data, data, bounds, nboostrap, max_eigenvalue=True):
     ##purpose: with a gapper object, 
     #we can estimate the hessian and the maximum eigevalue by boostrapping
-    PiHPi_boots=[]
-    maxeigval_PiHPi_boots =[]
-
-    mineigval_PiHPi_boots =[]
-    
+    #PiHPi_boots=[]
+    #maxeigval_PiHPi_boots =[]
+    #mineigval_PiHPi_boots =[]
     #loop over all bootstraps
-    for i in range(nboostrap):
-        boot_indx = np.random.choice(np.arange(data.shape[0]), data.shape[0], 
+    
+    @jax.jit
+    def run_over_bootsraps():
+        mineigval_PiHPi_boots =[]
+        maxeigval_PiHPi_boots =[]
+        PiHPi_boots=[]
+        for i in range(nboostrap):
+            boot_indx = np.random.choice(np.arange(data.shape[0]), data.shape[0], 
                                      replace=True) ## Sample with replacement:bootstrap
+            gapper_ = Gapper(data[boot_indx], bw, bounds)
+            PiHPis_grid = []
+            eigval_PiHPi = [] 
 
-        gapper_ = Gapper(data[boot_indx], bw, bounds)
-        PiHPis_grid = []
-        eigval_PiHPi = [] 
+            for pt in grid_data:
+                _pihpi = gapper_.get_PiHPi(pt) 
+                #_pihpi_eigval, _ =  jax.numpy.linalg.eigh(jax.numpy.array(_pihpi)) #np.linalg.eigh(_pihpi)
+                #print (_pihpi_eigval)
+                #print (np.array(jax.numpy.asarray(_pihpi_eigval)))
+                #print (type(_pihpi_eigval))
+                _pihpi_eigval, _= np.linalg.eigh(_pihpi)
+                PiHPis_grid.append(_pihpi)
+                eigval_PiHPi.append(_pihpi_eigval)
+                #print (eigval_PiHPi)
 
-        for pt in grid_data:
-            _pihpi = gapper_.get_PiHPi(pt) 
-            _pihpi_eigval, _pihpi_eigvec = np.linalg.eigh(_pihpi)
-
-            PiHPis_grid.append(_pihpi)
-            eigval_PiHPi.append(_pihpi_eigval)
-            #print (eigval_PiHPi)
-
-        PiHPis_grid, eigval_PiHPi = np.array(PiHPis_grid), np.array(eigval_PiHPi)
+            PiHPis_grid, eigval_PiHPi = np.array(PiHPis_grid), np.array(eigval_PiHPi)
         
-        #option for using minium or maximum eigenvalue
-        #if max_eigenvalue:
-        max_eigval_PiHPi_k = np.nanmax(eigval_PiHPi, axis=1)
-        #rescale everything between 0 and 1
-        max_eigval_PiHPi_k = (max_eigval_PiHPi_k-np.nanmin(max_eigval_PiHPi_k))/(np.nanmax(max_eigval_PiHPi_k)-np.nanmin(max_eigval_PiHPi_k))
+            #option for using minium or maximum eigenvalue
+            #if max_eigenvalue:
+            max_eigval_PiHPi_k = np.nanmax(eigval_PiHPi, axis=1)
+            #rescale everything between 0 and 1
+            max_eigval_PiHPi_k = (max_eigval_PiHPi_k-np.nanmin(max_eigval_PiHPi_k))/(np.nanmax(max_eigval_PiHPi_k)-np.nanmin(max_eigval_PiHPi_k))
 
-        #if not max_eigenvalue:
-        min_eigval_PiHPi_k = np.nanmin(eigval_PiHPi, axis=1)
-        min_eigval_PiHPi_k = (min_eigval_PiHPi_k-np.nanmin(min_eigval_PiHPi_k))/(np.nanmax(min_eigval_PiHPi_k)-np.nanmin(min_eigval_PiHPi_k))
+            #if not max_eigenvalue:
+            min_eigval_PiHPi_k = np.nanmin(eigval_PiHPi, axis=1)
+            min_eigval_PiHPi_k = (min_eigval_PiHPi_k-np.nanmin(min_eigval_PiHPi_k))/(np.nanmax(min_eigval_PiHPi_k)-np.nanmin(min_eigval_PiHPi_k))
 
 
-        maxeigval_PiHPi_boots.append(max_eigval_PiHPi_k)
-        mineigval_PiHPi_boots.append(min_eigval_PiHPi_k)
+            maxeigval_PiHPi_boots.append(max_eigval_PiHPi_k)
+            mineigval_PiHPi_boots.append(min_eigval_PiHPi_k)
 
-        PiHPi_boots.append(PiHPis_grid)
-        print(f'Run {i} finished')
-        
-    return np.array(maxeigval_PiHPi_boots), np.array(mineigval_PiHPi_boots), np.array(PiHPi_boots)
+            PiHPi_boots.append(PiHPis_grid)
+        #print(f'Run {i} finished')
+        return np.array(maxeigval_PiHPi_boots), np.array(mineigval_PiHPi_boots), np.array(PiHPi_boots)
+    return run_over_bootsraps()
 
 
 def find_gaps(bw, data, nboostrap=5):
-    n= 20
+    n= 50
     
     bounds = np.array([[np.min(data[:,d]),np.max(data[:,d])] for d in range(data.shape[1])])
 
     #scale of y to 
     x_to_y= np.ptp(data[:,0])/ np.ptp(data[:,1])
     
-    gridding_size = [ n, n]
+    gridding_size = [ n,int( n/(x_to_y))]
 
-    print (gridding_size)
+    #print (gridding_size)
 
     
     grid_linspace = [ np.linspace(bounds[d][0], bounds[d][1], gridding_size[d]) for d in range(2) ]
     #could use a rectangular grid instead
 
-    print (grid_linspace)
+    #print (grid_linspace)
 
 
     meshgrid = np.meshgrid(*grid_linspace, indexing='ij')
 
     meshgrid_ravel = [ xi.ravel().reshape(-1,1) for xi in meshgrid]
     grid_data = np.hstack(meshgrid_ravel)
-    print (grid_data)
-    print (data)
+    #print (grid_data)
+    #print (data)
     
     gapper_base = Gapper(data, bw, bounds)
-    print (gapper_base)
+    #print (gapper_base)
     grid_density = gapper_base.kde.score_samples(torch.tensor(grid_data))
     #density matrix 
     density_matr = grid_density.reshape((gridding_size[0], gridding_size[1]))
@@ -204,13 +259,13 @@ def find_gaps(bw, data, nboostrap=5):
 
     med_mineigval_pihpi = np.median(mineigval_PiHPi_boots, axis=0)
     med_mineigval_pihpi_resh = med_mineigval_pihpi.reshape((gridding_size[0], gridding_size[1]))
-    
-    return  {'density':density_matr, \
-              'max_eigen':med_maxeigval_pihpi_resh,
-              'min_eigen':med_mineigval_pihpi_resh,
-              'meshgrid':meshgrid, 
-              'PiHPi': PiHPi_boots,
-              'data': data}
+
+    return  {'density': np.array(density_matr), \
+              'max_eigen':np.array(med_maxeigval_pihpi_resh),
+              'min_eigen':np.array(med_mineigval_pihpi_resh),
+              'meshgrid':np.array(meshgrid), 
+              'PiHPi': np.array(PiHPi_boots),
+              'data': np.array(data)}
 
 def count_pal5_stars(mag_limit, dmod):
     dmod_pal5=16.85
@@ -284,7 +339,7 @@ def rotate(x, y, ang, c=(0,0)):
     return rotated[0], rotated[1] 
 
 def diagnostic_plots_one_stream(resx):
-    fig, (ax, ax1, ax2)=plt.subplots(ncols=3, figsize=(12, 4))
+    fig, (ax, ax1, ax2)=plt.subplots(ncols=3, figsize=(14, 4))
 
     meshgrid= resx['meshgrid']
     meshgrid_ravel = [ xi.ravel().reshape(-1,1) for xi in  meshgrid]
@@ -319,65 +374,101 @@ def diagnostic_plots_one_stream(resx):
                 grid_data[:,1][gap_mask.flatten().astype(bool)], s=50,\
                 marker='+', c='#0074D9')
     ax2.scatter(grid_data[:,0][stream_mask.flatten().astype(bool)], \
-                grid_data[:,1][stream_mask.flatten().astype(bool)], s=50,\
+               grid_data[:,1][stream_mask.flatten().astype(bool)], s=50,\
                 marker='+', c='#FF851B')
 
     for a in [ax, ax1, ax2]:
         a.set(xlabel='x (kpc) ', ylabel=' y (kpc) ', )
-        a.axis('equal')
+        #a.axis('equal')
     plt.tight_layout()
     plt.savefig(path_plot+'//stream_cutout_gap_rescaled.jpeg', bbox_inches='tight')
-    plt.show()
+    #plt.show()
 
 
-def run_all(rgc, mag_limit, box_center, box_size, bw, 	d_galaxy):
-	mhalo=1e7
-	vhalo=-50
+def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.5):
+    mhalo=5e6
+    vhalo=-50
+    fname=path_isochrone+'simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
+    MASTER_DF=pd.read_csv(fname)
+    #metallicity cut
+    MASTER_DF=MASTER_DF.query('MH < -1').reset_index(drop=True)
+    print ('finished loading file --------------------------------------')    
+    #hg
+    @numba.jit
+    def run_process(d, bw):
+        
+        d_galaxy=d*u.kpc
+        kpc_conversion = np.pi * d_galaxy / 180.
+        roman_fov= 0.52*u.degree*(kpc_conversion /u.degree)
 
-	kpc_conversion = np.pi * d_galaxy / 180.
-	roman_fov= 0.52*u.degree*(kpc_conversion /u.degree)
+        center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+        b=make_box( (center, center), roman_fov.value, roman_fov.value)
+        
+        dmod_galaxy=5*np.log10(d_galaxy.to(u.pc).value/10.0)
+        N_pal5=int(count_pal5_stars(mag_limit, dmod_galaxy))
+        vls=read_stream_file(N_pal5,gap_center, b, rgc, mhalo, vhalo,  distance_to_hit=distance_to_hit)
 
-	fname=path_isochrone+'simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
-	MASTER_DF=pd.read_csv(fname)
-	#metallicity cut
+        bck=read_cmd_file(MASTER_DF, rgc, d_galaxy, mag_limit)
+        s=b.select(bck[['x_coord', 'y_coord']])
+        img= [np.concatenate([vls[0], s.x.values]), np.concatenate([vls[1], s.y.values])]
+        #print ('finished making a cut --------------------------------------')
+        #print (img)
+        #fig, ax=plt.subplots()
+        #ax.scatter(img[0], img[1], s=.1, c='k')
+        #plt.savefig('image_test.jpeg')
+        #plt.show()
+		#print ('number of stars/sq. degree {}'.format(len(img[0])/0.52))
+		#print ('---------------------------------------')
+        center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+        b=make_box(box_center, 5, 2)
+        s=b.select(np.array(img)).T
+        print (s)
+        print (len(s[:,0]))
+        print (len(img[0]))
+        res=find_gaps(bw, s, nboostrap=5)
+        print (np.nanmin(s, axis=0), np.nanmax(s, axis=0))
 
-	MASTER_DF=MASTER_DF.query('MH < -1').reset_index(drop=True)
+        return {'bw{:.1f}dmod_galaxy{:.2f}'.format(bw,  dmod_galaxy):  res}
+    
+    from concurrent.futures import ThreadPoolExecutor, wait , ALL_COMPLETED
+    from  functools import partial
+    ds=np.arange(500, 3000, 50)
+    #bws=np.arange(0.1,1., 0.1)
+    #ds=[770]
+    bws=[0.7]
+    iterables=list(np.array([(x, y) for x, y in np.array(list(itertools.product(ds, bws)))]).T)
+    method=partial(run_process)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures=list(executor.map( method, *iterables, timeout=None, chunksize=10))
 
-	center=np.nanmedian(np.array(rgc.split('_')).astype(float))
-	b=make_box( (center, center), roman_fov.value, roman_fov.value)
-
-
-	dmod_galaxy=5*np.log10(d_galaxy.to(u.pc).value/10.0)
-	N_pal5=int(count_pal5_stars(mag_limit, dmod_galaxy))
-	vls=read_stream_file(N_pal5, gap_centers[rgc], b, rgc, mhalo, vhalo, rotate_by=rotation_angles[rgc])
-
-	bck=read_cmd_file(MASTER_DF, rgc, d_galaxy, mag_limit)
-
-	s=b.select(bck[['x_coord', 'y_coord']])
-
-	img= [np.concatenate([vls[0], s.x.values]), np.concatenate([vls[1], s.y.values])]
-
-	fig, ax=plt.subplots()
-
-	ax.scatter(img[0], img[1], s=.1, c='k')
-	ax.set(xlabel='X (kpc)', ylabel='Y (kpc)')
-	plt.savefig('../figures/mock_image_m31_rgc{}_dmod{:.2f}.jpeg'.format(rgc, dmod_galaxy))
-	#ax.set(ylim=[13.5, 14.4], xlim=[12, 18]
-	plt.show()
-
-	b=make_box(box_center, *box_size)
-	s=np.vstack(b.select(np.array(img))).T
-
-	res=find_gaps(bw, s, nboostrap=5)
-
-	diagnostic_plots_one_stream(res)
-
-	#make a long filename and save results
+    results=[x for x in futures]
+    #results={}
+    #for d in ds:
+    #    for bw in bws:
+    #        results.update(run_process(d, bw))
+    #results= 
+    #print (res.keys())
+    #diagnostic_plots_one_stream(results)
+    #choose a random nunber between o and 10,000 to represent the iteration
+    iteration=f'{int(np.random.uniform(0, 10000)):05}'
+    #creative filename
+    fname= 'pipeline_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
+    #print (fname)
+    #print (results)
+    #ran into issues with pickle, it kept requiring jax
+    #df= pd.DataFrame(results).applymap(np.array)
+    #df.to_pickle(path_pipeline+'/{}.pkl'.format(fname))
+    np.save(path_pipeline+'/{}.npy'.format(fname),results)
+    #import json
+    #with open(path_pipeline+'/{}.json', 'w+') as fp:
+    #    json.dump(results, fp)
 
 
 if __name__ =='__main__':
-	box_center=(17, 15)
-	box_size=(5, 2)
-	bw=0.7
-	d_galaxy=770*u.kpc
-	run_all('10_20', 27.15, box_center, box_size, bw, d_galaxy)
+    box_size=(5, 2)
+    for i in range(0, 10):
+        for mag_limit in [27.15, 28.69]:
+            run_all('10_20', mag_limit, (3, 0), box_size, (14.5, 15.55))
+            run_all('30_40', mag_limit, (3, 0), box_size, (35, 35.2))
+            run_all('50_60', mag_limit, (5, 0), box_size,  (55, 54.7), distance_to_hit=1.0)
+    #run mulithread

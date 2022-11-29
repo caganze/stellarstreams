@@ -60,16 +60,20 @@ pos_tf_35=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value, pos_tf.y.to(u.kpc
                                 vel=pos_tf.v_xyz)
 
 #position for rgc 40
-pos_tf_55=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value, pos_tf.y.to(u.kpc).value, (pos_tf.z+40*u.kpc).to(u.kpc).value]*u.kpc, \
+#pos_tf_55=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value, pos_tf.y.to(u.kpc).value, (pos_tf.z+35*u.kpc).to(u.kpc).value]*u.kpc, \
+#                                vel=pos_tf.v_xyz)
+pos_tf_55=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value,\
+                                    (pos_tf.z+17*u.kpc).to(u.kpc).value,\
+                                     (pos_tf.z+30*u.kpc).to(u.kpc).value]*u.kpc, \
                                 vel=pos_tf.v_xyz)
+
 
 init_positions={'10_20': pos_tf, '30_40': pos_tf_35, '50_60': pos_tf_55}
 
-intergation_times={'10_20': {'tfinal':2.*u.Gyr, 'tcol':700*u.Myr, 'dt': 1.*u.Myr, 'textra': 30*u.Myr}, \
-                    '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1700*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr},\
-                    '50_60': {'tfinal':3.5*u.Gyr, 'tcol':1700.*u.Myr, 'dt': 1*u.Myr, 'textra': 30*u.Myr}}
+intergation_times={'10_20': {'tfinal':2.*u.Gyr, 'tcol':700*u.Myr, 'dt': 1.*u.Myr, 'textra': 100*u.Myr}, \
+                    '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1700*u.Myr, 'dt': 1*u.Myr, 'textra': 100*u.Myr},\
+                    '50_60': {'tfinal':3.0*u.Gyr, 'tcol':1000.*u.Myr, 'dt': 1*u.Myr, 'textra': 100*u.Myr}}
 
-distances_to_hit={'10_20': 0.5, '30_40': 1., '50_60': .5}
 
 #function definitions
 def evolve_orbits_only_as_null(st_coord, time_dict, units):
@@ -191,7 +195,7 @@ def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_e
 
     return gen.run(prog_w0, prog_mass, nbody=nbody,\
                    output_every=output_every, output_filename= output_filename, \
-                check_filesize=True, overwrite=True, n_particles=10,  progress=True, **timedict)
+                check_filesize=True, overwrite=True, n_particles=10,  release_every=1,  progress=True, **timedict)
 
 def run_stream_and_subhalo(halo_mass, stream_mass, halo_r, halo_pos, stream_pos, timedict,
                            filename='mockstream',
@@ -528,7 +532,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #kiyan's method
         #vpsi= ((1*u.km/u.s)/(0.1*u.kpc)).to(u.rad/u.s, u.dimensionless_angles()).value
         #psi, v_rho (km/s), v_z (km/s, vpsi (km/s)
-        impact_vector=[0., 0., vhalo , -0.]
+        impact_vector=[np.pi/2, 0., vhalo , -0.]
         impact_w0=site_at_impact_w0
         perpos=get_perturber_w0_at_impact(impact_w0, *impact_vector)
         full_halo_vel=perpos.v_xyz
@@ -553,7 +557,8 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
                                                              t1=0.*u.Myr, t2=-tcollision)
 
         #integrate both the halo and stream forward up a few nudges after collision plus some nudge 
-        time_dict= {'t':np.linspace(0*u.Myr, tcollision+textra, NSTEPS)}
+        #time_dict= {'t':np.linspace(0*u.Myr, tcollision+textra, NSTEPS)}
+        time_dict={'t1': 0.*u.Myr, 't2': tcollision+textra, 'dt': 1*u.Myr }
 
         #integrate subhalo and stream in time 
         collision_halo_pos=gd.PhaseSpacePosition(pos=collision_orbit.xyz[:,-1],
@@ -607,7 +612,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #generate additional stars at the center 
         mock_st_additional, _=gen.run( use_pos, mstream,  **time_dict_total,
                                             nbody=None, progress=True, \
-                                            n_particles= 10)
+                                            n_particles= 10,  release_every=1)
         #add streams at final position
         #combine old a new
         #save and plot out the final stream
@@ -682,18 +687,19 @@ def run_bunch_streams(rgc):
                       'dt': intergation_times[rgc]['dt'],
                       'nsteps':500,
                       'nstars': 5000,
-                      'distance_to_hit': distances_to_hit[rgc],
+                      'distance_to_hit': None,
                       'file_prefix': 'pal5_rgc{}_no_selfgrav'.format(rgc) }
 
-        vmax=-50
+        vmax=-20
         mhalos=np.array([1e7, 5e6, 2e6])
         rhalos=1005*((mhalos/10**8)**0.5)
         #rhalos=0.1*((mhalos/10**8)**0.5)
-        for d in [0.1, 0.5, 1., 2., 3., 4]:
-            for mhalo, rhalo in zip(mhalos, rhalos):
-                S['distance_to_hit']=d
-                filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
-                run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=True, filename=filename, add_more_stars=True)
+        #for d in [0.1, 0.5, 1., 2., 3., 4]:
+        d=0.5
+        for mhalo, rhalo in zip(mhalos, rhalos):
+            S['distance_to_hit']=d
+            filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
+            run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
 
         run_stream_intact(S)
 
@@ -718,7 +724,7 @@ def run_stream_intact(STREAM_CONFIGURATION):
     gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
     mock_st, cent=gen.run( st_pos, prog_mass,  ** time_dict,
                                             nbody=None, progress=True, \
-                                            n_particles= int(1.5*NSTARS/((tcollision/(dt)).value)))
+                                            n_particles= 10,  release_every=1)
 
     filename='orgininal'+STREAM_CONFIGURATION['file_prefix']
     final_stream_coord=SkyCoord(x= mock_st.xyz[0],\

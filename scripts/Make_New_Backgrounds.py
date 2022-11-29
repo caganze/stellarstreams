@@ -203,7 +203,7 @@ def simulate(rgc, nsample):
     
     #
     mask_m31=np.logical_and.reduce( [data['g-i'] >0. , data['g-i'] <1,  data.g >22])
-    mask_mw=np.logical_and.reduce( [data['g-i'] >1. , data['g-i'] <2,  data.g <20])
+    mask_mw=np.logical_and.reduce( [data['g-i'] >1. , data['g-i'] <4,  data.g <22])
 
     #compute the fraction of stars that are in the true data
     ndata_m31_bounds=len(data[mask_m31])
@@ -215,7 +215,7 @@ def simulate(rgc, nsample):
 
     #compute the fraction of simulated stars within these bounds
     nsim_m31_bounds=len(m31_small[np.logical_and.reduce( [m31_small['g-i'].between(0, 1), m31_small.appgmag> 22])])
-    nsim_mw_bounds=len(mw_small[np.logical_and.reduce( [mw_small['g-i'].between(1, 2), mw_small.appgmag< 20])])
+    nsim_mw_bounds=len(mw_small[np.logical_and.reduce( [mw_small['g-i'].between(1, 4), mw_small.appgmag< 22])])
 
     #compute the fraction of stars that we need to simulate
     print ('currrent number of M31 stars in data {}'.format(ndata_m31_bounds))
@@ -239,8 +239,8 @@ def simulate(rgc, nsample):
     bool0= np.logical_and.reduce([m31_final['g-i'].between(0., 1),
                                 m31_final.appgmag> 22])
 
-    bool1= np.logical_and.reduce([mw_final['g-i'].between(1, 2),
-                                mw_final.appgmag< 20])
+    bool1= np.logical_and.reduce([mw_final['g-i'].between(1, 4),
+                                mw_final.appgmag< 22])
 
 
     print ('new number of M31 stars {}'.format(len(m31_final[bool0].query(query))))
@@ -259,7 +259,6 @@ def simulate(rgc, nsample):
 
     ax.set(xlim=[-1, 4.5], title='Simulation', xlabel='g-i', ylabel='i')
     ax1.set(xlim=[-1, 4.5],  title='Pandas Data', xlabel='g-i', ylabel='i')
-    x
     plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc), bbox_inches='tight')
     
     #save
