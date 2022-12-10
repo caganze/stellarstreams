@@ -472,3 +472,4 @@ if __name__ =='__main__':
             run_all('30_40', mag_limit, (3, 0), box_size, (35, 35.2))
             run_all('50_60', mag_limit, (5, 0), box_size,  (55, 54.7), distance_to_hit=1.0)
     #run mulithread
+

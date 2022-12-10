@@ -112,8 +112,15 @@ def interpolate_isochrones(mass_range, age_range, met_range, nsample):
 
 def add_app_magnitudes(vals, ds):
     #add intrinsic scatter of 0.1 magnitude --> varies but simplicity
+    #coefficients for 
+    mag_err_pols={'gmag': np.poly1d([-1.65666510e-03,  1.19499350e-01, -2.53711966e+00,  1.35899029e+01]),\
+                  'imag': np.poly1d([-1.79810511e-03,  1.23934230e-01, -2.49265894e+00,  1.23087386e+01])}
     for k in mag_keys:
-        vals['app'+k]=np.random.normal(vals[k], 0.1)+5*np.log10(ds/10.0)
+        if k in mag_err_pols.keys():
+            mag_err= 10**mag_err_pols[k](vals[k])
+            vals['app'+k]=np.random.normal(vals[k],  mag_err)+5*np.log10(ds/10.0)
+        else:
+            vals['app'+k]=np.random.normal(vals[k],  0.1)+5*np.log10(ds/10.0)
     return vals
 
 

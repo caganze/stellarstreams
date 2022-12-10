@@ -191,7 +191,7 @@ def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_e
     prog_mass = mass # * u.Msun
     print (prog_mass)
     pal5_pot = gp.PlummerPotential(m= prog_mass, b=4*u.pc, units=usys)
-    gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
+    gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
 
     return gen.run(prog_w0, prog_mass, nbody=nbody,\
                    output_every=output_every, output_filename= output_filename, \
@@ -409,7 +409,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #generate stream at -tmax+tcollision
         df = ms.FardalStreamDF()
         pal5_pot = gp.PlummerPotential(m= mstream, b=4*u.pc, units=usys)
-        gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
+        gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
         #int(NSTARS/((tcollision/(dt)).value))
         mock_st, mock_pos=gen.run( pos_tf, mstream, dt=dt, t1=0*u.Myr, t2= tcollision ,\
                                             nbody=None, n_particles=10, progress=True,   release_every=1)
@@ -688,9 +688,9 @@ def run_bunch_streams(rgc):
                       'nsteps':500,
                       'nstars': 5000,
                       'distance_to_hit': None,
-                      'file_prefix': 'pal5_rgc{}_no_selfgrav'.format(rgc) }
+                      'file_prefix': 'pal5_rgc{}'.format(rgc) }
 
-        vmax=-20
+        vmax=-50
         mhalos=np.array([1e7, 5e6, 2e6])
         rhalos=1005*((mhalos/10**8)**0.5)
         #rhalos=0.1*((mhalos/10**8)**0.5)
@@ -721,7 +721,7 @@ def run_stream_intact(STREAM_CONFIGURATION):
     prog_mass =    mstream 
     print (prog_mass)
     pal5_pot = gp.PlummerPotential(m= prog_mass, b=4*u.pc, units=usys)
-    gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
+    gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
     mock_st, cent=gen.run( st_pos, prog_mass,  ** time_dict,
                                             nbody=None, progress=True, \
                                             n_particles= 10,  release_every=1)
@@ -741,6 +741,6 @@ def run_stream_intact(STREAM_CONFIGURATION):
 if __name__ =='__main__':
     #for st_config in [STREAM_CONFIGURATION_10, STREAM_CONFIGURATION_30, STREAM_CONFIGURATION_50]:
     #run_stream_intact(STREAM_CONFIGURATION_10)
-    #run_bunch_streams('10_20')
-    #run_bunch_streams('30_40')
+    run_bunch_streams('10_20')
+    run_bunch_streams('30_40')
     run_bunch_streams('50_60')
