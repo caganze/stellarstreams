@@ -68,11 +68,11 @@ pos_tf_55=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value,\
                                 vel=pos_tf.v_xyz)
 
 
-init_positions={'10_20': pos_tf, '30_40': pos_tf_35, '50_60': pos_tf_55}
+init_positions={'10_20': (pos_tf, 0.5), '30_40': (pos_tf_35, 0.7), '50_60': (pos_tf_55, 0.8)}
 
-intergation_times={'10_20': {'tfinal':2.*u.Gyr, 'tcol':700*u.Myr, 'dt': 1.*u.Myr, 'textra': 100*u.Myr}, \
-                    '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1700*u.Myr, 'dt': 1*u.Myr, 'textra': 100*u.Myr},\
-                    '50_60': {'tfinal':3.0*u.Gyr, 'tcol':1000.*u.Myr, 'dt': 1*u.Myr, 'textra': 100*u.Myr}}
+intergation_times={'10_20': {'tfinal':2.*u.Gyr, 'tcol':700*u.Myr, 'dt': .5*u.Myr, 'textra': 50*u.Myr}, \
+                    '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1700*u.Myr, 'dt': .5*u.Myr, 'textra': 50*u.Myr},\
+                    '50_60': {'tfinal':3.0*u.Gyr, 'tcol':1500.*u.Myr, 'dt': 1*u.Myr, 'textra': 100*u.Myr}}
 
 
 #function definitions
@@ -191,7 +191,7 @@ def generate_stream_and_perturber(mass, prog_w0, timedict,  nbody=None, output_e
     prog_mass = mass # * u.Msun
     print (prog_mass)
     pal5_pot = gp.PlummerPotential(m= prog_mass, b=4*u.pc, units=usys)
-    gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
+    gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
 
     return gen.run(prog_w0, prog_mass, nbody=nbody,\
                    output_every=output_every, output_filename= output_filename, \
@@ -409,7 +409,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
         #generate stream at -tmax+tcollision
         df = ms.FardalStreamDF()
         pal5_pot = gp.PlummerPotential(m= mstream, b=4*u.pc, units=usys)
-        gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
+        gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
         #int(NSTARS/((tcollision/(dt)).value))
         mock_st, mock_pos=gen.run( pos_tf, mstream, dt=dt, t1=0*u.Myr, t2= tcollision ,\
                                             nbody=None, n_particles=10, progress=True,   release_every=1)
@@ -558,7 +558,7 @@ def run_one_stream(STREAM_CONFIGURATION, vhalo, mhalo, halo_r, visualize_collisi
 
         #integrate both the halo and stream forward up a few nudges after collision plus some nudge 
         #time_dict= {'t':np.linspace(0*u.Myr, tcollision+textra, NSTEPS)}
-        time_dict={'t1': 0.*u.Myr, 't2': tcollision+textra, 'dt': 1*u.Myr }
+        time_dict={'t1': 0.*u.Myr, 't2': tcollision+textra, 'dt': dt }
 
         #integrate subhalo and stream in time 
         collision_halo_pos=gd.PhaseSpacePosition(pos=collision_orbit.xyz[:,-1],
@@ -679,7 +679,7 @@ def run_bunch_streams(rgc):
         """
         run a bunch of streams by changing their masses and velocities
         """
-        S={'stream_coord': init_positions[rgc],
+        S={'stream_coord': init_positions[rgc][0],
                       'mstream': 5e4*u.Msun,
                      'tfinal': intergation_times[rgc]['tfinal'],
                       'tcollision': intergation_times[rgc]['tcol'],
@@ -687,19 +687,19 @@ def run_bunch_streams(rgc):
                       'dt': intergation_times[rgc]['dt'],
                       'nsteps':500,
                       'nstars': 5000,
-                      'distance_to_hit': None,
-                      'file_prefix': 'pal5_rgc{}'.format(rgc) }
+                      'distance_to_hit': init_positions[rgc][1],
+                      'file_prefix': 'no_self_grav_pal5_rgc{}'.format(rgc) }
 
         vmax=-50
         mhalos=np.array([1e7, 5e6, 2e6])
         rhalos=1005*((mhalos/10**8)**0.5)
         #rhalos=0.1*((mhalos/10**8)**0.5)
         #for d in [0.1, 0.5, 1., 2., 3., 4]:
-        d=0.5
-        for mhalo, rhalo in zip(mhalos, rhalos):
-            S['distance_to_hit']=d
-            filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
-            run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
+        d=S['distance_to_hit']
+        #for mhalo, rhalo in zip(mhalos, rhalos):
+        #    #S['distance_to_hit']=d
+        #    filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
+        #    run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
 
         run_stream_intact(S)
 
@@ -721,7 +721,7 @@ def run_stream_intact(STREAM_CONFIGURATION):
     prog_mass =    mstream 
     print (prog_mass)
     pal5_pot = gp.PlummerPotential(m= prog_mass, b=4*u.pc, units=usys)
-    gen = ms.MockStreamGenerator(df, H, progenitor_potential=pal5_pot)
+    gen = ms.MockStreamGenerator(df, H)#, progenitor_potential=pal5_pot)
     mock_st, cent=gen.run( st_pos, prog_mass,  ** time_dict,
                                             nbody=None, progress=True, \
                                             n_particles= 10,  release_every=1)

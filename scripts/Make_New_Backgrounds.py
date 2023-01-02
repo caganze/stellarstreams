@@ -33,9 +33,9 @@ from tqdm import tqdm
 # In[2]:
 
 
-path_plot = '/users/caganze/research/stellarstreams/figures/'
-path_isochrones = '/users/caganze/research/stellarstreams/data/isochrones/'
-path_pandas= '/users/caganze/research/stellarstreams/data/pandas/'
+path_plot = '../figures/'
+path_isochrones = '../data/isochrones/'
+path_pandas= '../data/pandas/'
 
 mag_keys=['gmag', 'imag', 'F062mag', 'F087mag']
 
@@ -113,14 +113,26 @@ def interpolate_isochrones(mass_range, age_range, met_range, nsample):
 def add_app_magnitudes(vals, ds):
     #add intrinsic scatter of 0.1 magnitude --> varies but simplicity
     #coefficients for 
-    mag_err_pols={'gmag': np.poly1d([-1.65666510e-03,  1.19499350e-01, -2.53711966e+00,  1.35899029e+01]),\
-                  'imag': np.poly1d([-1.79810511e-03,  1.23934230e-01, -2.49265894e+00,  1.23087386e+01])}
+    mag_err_pols={'gmag': np.poly1d( [0.31546402, -8.92198564]),\
+                  'imag': np.poly1d([ 0.33285488, -8.97774983])}
+    vals['distance']=ds
     for k in mag_keys:
         if k in mag_err_pols.keys():
-            mag_err= 10**mag_err_pols[k](vals[k])
-            vals['app'+k]=np.random.normal(vals[k],  mag_err)+5*np.log10(ds/10.0)
+            mags0=vals[k].values+5*np.log10(ds/10.0)
+            mag_err=10**mag_err_pols[k](mags0)
+            mag_err[mags0<15]=1e-3
+            mag_err[mags0>27]=0.5
+            mags=np.random.normal(mags0, mag_err)
+            #mask again 
+            mag_err[mags<15]=1e-3
+            mag_err[mags>27]=0.5
+            mags=np.random.normal(mags0, mag_err)
+            vals['app'+k]=mags
+            vals['app'+k+'_er']=mag_err
         else:
-            vals['app'+k]=np.random.normal(vals[k],  0.1)+5*np.log10(ds/10.0)
+            vals['app'+k]=np.random.normal(vals[k].values,  0.1)+5*np.log10(ds/10.0)
+            vals['app'+k+'_er']=0.1
+    print (vals.columns)
     return vals
 
 
@@ -155,8 +167,8 @@ def simulate_milky_way(nsample=1e5):
 def simulate_M31(d_M31, nsample=1e5):
     #halo 
     model=M31Halo()
-    vals=interpolate_isochrones( (0.1, 120), (8e9, 13e9) , (-2.5,0.5), nsample)
-    ds=np.concatenate([model.sample_distances(0.1, 200_000, 10000) for x in range(0, 10)])
+    vals=interpolate_isochrones( (0.1, 120), (7e9, 13e9) , (-2.5,0.5), nsample)
+    ds=np.concatenate([model.sample_distances(0.1, 100_000, 10000) for x in range(0, 10)])
     ds=np.random.choice(ds, int(nsample))
 
     l= 2*np.pi*np.random.uniform(0, 1, len(ds))
@@ -201,6 +213,8 @@ class M31Halo(GalacticComponent):
 def simulate(rgc, nsample):
     m31=simulate_M31(d_M31, nsample=nsample)
     mw=simulate_milky_way(nsample=nsample)
+    print (mw.columns)
+    #hj
     
     #read data
     data=parse_single_table(path_pandas+'M31_{}kpc_new.vot'.format(rgc)).to_table().to_pandas()

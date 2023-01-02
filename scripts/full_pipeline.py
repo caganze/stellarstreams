@@ -21,7 +21,7 @@ import torch
 import itertools
 #paths
 import numba 
-import jax #use jax.jit instead of numba --> might change for 
+#import jax #use jax.jit instead of numba --> might change for 
 #plot_style()
 
 path_isochrone='../data/isochrones/'
@@ -40,7 +40,7 @@ def read_stream_file(N_pal5, gap_center, box, rgc, mhalo, vhalo,    distance_to_
     #filename='pal5_rgc{}_mhalo{:.2e}_vhalo{:.0f}'.format(rgc, mhalo, vhalo)
  
     #filename='pal5_rgc{}_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(rgc, mhalo, vhalo, distance_to_hit )
-    filename='pal5_rgc{}_no_selfgrav_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(rgc, mhalo, vhalo, distance_to_hit )
+    filename='no_self_grav_pal5_rgc{}_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(rgc, mhalo, vhalo, distance_to_hit )
     st=(np.load(path_streamdata+'/{}.npy'.format(filename), allow_pickle=True).flatten()[0])['stream']
     
     x0=st.y.value
@@ -136,7 +136,7 @@ def read_cmd_file(df, rgc, d_galaxy, mag_limit):
             
     #appply magnitude cut
     df_final=pd.concat([m31_df, mw_df]).reset_index(drop=True)
-    df_final=(df_final[df_final.appF087mag < mag_limit]).reset_index(drop=True)
+    df_final=(df_final[(df_final.appF087mag < mag_limit) & (df_final.appF087mag >12)]).reset_index(drop=True)
     
     
     #assign RA, DEC, xki based on the data
@@ -167,7 +167,7 @@ def boostrap_density_estimate(gapper_base, bw, grid_data, data, bounds, nboostra
     #mineigval_PiHPi_boots =[]
     #loop over all bootstraps
     
-    @jax.jit
+    #@jax.jit
     def run_over_bootsraps():
         mineigval_PiHPi_boots =[]
         maxeigval_PiHPi_boots =[]
@@ -271,14 +271,14 @@ def count_pal5_stars(mag_limit, dmod):
     dmod_pal5=16.85
     def read_pandas_isochrones():
         from astropy.io import ascii
-        return ascii.read(path_isochrone+'/cfht_pre2014_isochrones_pal5.txt').to_pandas()
+        return ascii.read(path_isochrone+'/cfht_pre2014_isochrones_pal5_3.7.txt').to_pandas()
 
     def read_roman_isochrones():
         from astropy.io import ascii
-        return ascii.read(path_isochrone+'/roman_isochrones_vega_pal5.txt').to_pandas()
+        return ascii.read(path_isochrone+'/roman_isochrones_vega_pal5_3.7.txt').to_pandas()
     
     nsample=1e6
-    masses= sample_from_powerlaw(-.5, xmin=0.1, xmax=120, nsample=nsample)
+    masses= sample_from_powerlaw(-.5, xmin=0.1, xmax=0.85, nsample=nsample)
     cfht=read_pandas_isochrones()
     roman= read_roman_isochrones()
     comb= pd.concat([cfht, roman]).reset_index()
@@ -396,7 +396,6 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
     #hg
     @numba.jit
     def run_process(d, bw):
-        
         d_galaxy=d*u.kpc
         kpc_conversion = np.pi * d_galaxy / 180.
         roman_fov= 0.52*u.degree*(kpc_conversion /u.degree)
@@ -411,6 +410,9 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
         bck=read_cmd_file(MASTER_DF, rgc, d_galaxy, mag_limit)
         s=b.select(bck[['x_coord', 'y_coord']])
         img= [np.concatenate([vls[0], s.x.values]), np.concatenate([vls[1], s.y.values])]
+        fname= 'images_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
+        np.save(path_data+'/{}.npy'.format(fname),img)
+        #jjk
         #print ('finished making a cut --------------------------------------')
         #print (img)
         #fig, ax=plt.subplots()
@@ -419,22 +421,23 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
         #plt.show()
 		#print ('number of stars/sq. degree {}'.format(len(img[0])/0.52))
 		#print ('---------------------------------------')
-        center=np.nanmedian(np.array(rgc.split('_')).astype(float))
-        b=make_box(box_center, 5, 2)
-        s=b.select(np.array(img)).T
-        print (s)
-        print (len(s[:,0]))
-        print (len(img[0]))
-        res=find_gaps(bw, s, nboostrap=5)
-        print (np.nanmin(s, axis=0), np.nanmax(s, axis=0))
+        #center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+        #b=make_box(box_center, 5, 2)
+        #s=b.select(np.array(img)).T
+        #print (s)
+        #print (len(s[:,0]))
+        #print (len(img[0]))
+        #res=find_gaps(bw, s, nboostrap=5)
+        #print (np.nanmin(s, axis=0), np.nanmax(s, axis=0))
+        return 
 
-        return {'bw{:.1f}dmod_galaxy{:.2f}'.format(bw,  dmod_galaxy):  res}
+        #return {'bw{:.1f}dmod_galaxy{:.2f}'.format(bw,  dmod_galaxy):  res}
     
     from concurrent.futures import ThreadPoolExecutor, wait , ALL_COMPLETED
     from  functools import partial
     ds=np.arange(500, 3000, 50)
     #bws=np.arange(0.1,1., 0.1)
-    #ds=[770]
+    ds=[770]
     bws=[0.7]
     iterables=list(np.array([(x, y) for x, y in np.array(list(itertools.product(ds, bws)))]).T)
     method=partial(run_process)
@@ -452,13 +455,13 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
     #choose a random nunber between o and 10,000 to represent the iteration
     iteration=f'{int(np.random.uniform(0, 10000)):05}'
     #creative filename
-    fname= 'pipeline_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
+    #fname= 'images_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
     #print (fname)
     #print (results)
     #ran into issues with pickle, it kept requiring jax
     #df= pd.DataFrame(results).applymap(np.array)
     #df.to_pickle(path_pipeline+'/{}.pkl'.format(fname))
-    np.save(path_pipeline+'/{}.npy'.format(fname),results)
+    #np.save(path_data+'/{}.npy'.format(fname),results)
     #import json
     #with open(path_pipeline+'/{}.json', 'w+') as fp:
     #    json.dump(results, fp)
@@ -466,10 +469,10 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
 
 if __name__ =='__main__':
     box_size=(5, 2)
-    for i in range(0, 10):
-        for mag_limit in [27.15, 28.69]:
-            run_all('10_20', mag_limit, (3, 0), box_size, (14.5, 15.55))
-            run_all('30_40', mag_limit, (3, 0), box_size, (35, 35.2))
-            run_all('50_60', mag_limit, (5, 0), box_size,  (55, 54.7), distance_to_hit=1.0)
+    #for i in range(0, 10):
+    for mag_limit in [27.15, 28.69]:
+        run_all('10_20', mag_limit, (3, 0.5), box_size, (15, 15), distance_to_hit=0.5)
+        run_all('30_40', mag_limit, (3, 0), box_size, (35, 35.2), distance_to_hit=0.7)
+        run_all('50_60', mag_limit, (-4., 0.5), box_size,  (55, 54.7), distance_to_hit=0.8)
     #run mulithread
 
