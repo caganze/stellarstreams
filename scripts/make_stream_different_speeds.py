@@ -70,6 +70,7 @@ pos_tf_55=gd.PhaseSpacePosition(pos=[pos_tf.x.to(u.kpc).value,\
 
 init_positions={'10_20': (pos_tf, 0.5), '30_40': (pos_tf_35, 0.7), '50_60': (pos_tf_55, 0.8)}
 
+
 intergation_times={'10_20': {'tfinal':2.*u.Gyr, 'tcol':700*u.Myr, 'dt': .5*u.Myr, 'textra': 50*u.Myr}, \
                     '30_40': {'tfinal':3.0*u.Gyr, 'tcol':1700*u.Myr, 'dt': .5*u.Myr, 'textra': 50*u.Myr},\
                     '50_60': {'tfinal':3.0*u.Gyr, 'tcol':1500.*u.Myr, 'dt': 1*u.Myr, 'textra': 100*u.Myr}}
