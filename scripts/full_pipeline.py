@@ -30,6 +30,7 @@ path_streamdata='../data/stream/'
 path_pipeline='../data/pipeline/'
 path_pandas= '../data/pandas/'
 path_plot='../figures/'
+isochrone_path=path_isochrone
 
 
 mag_keys=['gmag', 'imag', 'F062mag', 'F087mag']
@@ -69,11 +70,11 @@ def read_stream_file(N_pal5, gap_center, box, rgc, mhalo, vhalo,    distance_to_
     choose=np.random.choice(np.arange(len(x)), N_pal5)
     
     return box.select(np.array([x[choose], y[choose]]))
-    
+
+
 def count_pal5_stars_old(mag_limit, dmod):
     import scipy.interpolate as interp
     dmod_pal5=16.85
-
     cfht_mini = np.loadtxt(isochrone_path+'/Isochrone_CFHT_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [2])
     cfht_gmag = np.loadtxt(isochrone_path+'/Isochrone_CFHT_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [24])
     cfht_imag = np.loadtxt(isochrone_path+'/Isochrone_CFHT_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [25])
@@ -81,15 +82,15 @@ def count_pal5_stars_old(mag_limit, dmod):
     wfirst_mags = np.loadtxt(isochrone_path+'/Isochrone_WFIRST_PARSEC_withDust_newZ.txt', skiprows = 8, usecols = [23,24,25,26,27,28,29])
 
     sample_lowmasses=sample_from_powerlaw(-0.5, xmin=np.min(cfht_mini), xmax=np.max(cfht_mini), nsample=int(1e6))
-    inter_gmags = interp.interp1d(cfht_mini, cfht_gmag)
-    inter_imags = interp.interp1d(cfht_mini, cfht_imag)
-    inter_Rmags = interp.interp1d(wfirst_mini, wfirst_mags[:,0])
-    inter_Zmags = interp.interp1d(wfirst_mini, wfirst_mags[:,1])
-    inter_Ymags = interp.interp1d(wfirst_mini, wfirst_mags[:,2])
-    inter_Jmags = interp.interp1d(wfirst_mini, wfirst_mags[:,3])
-    inter_Hmags = interp.interp1d(wfirst_mini, wfirst_mags[:,4])
-    inter_Fmags = interp.interp1d(wfirst_mini, wfirst_mags[:,5])
-    inter_Wmags = interp.interp1d(wfirst_mini, wfirst_mags[:,6])
+    inter_gmags = interp.interp1d(cfht_mini, cfht_gmag, bounds_error=False,  fill_value=np.nan)
+    inter_imags = interp.interp1d(cfht_mini, cfht_imag, bounds_error=False,  fill_value=np.nan)
+    inter_Rmags = interp.interp1d(wfirst_mini, wfirst_mags[:,0], bounds_error=False,  fill_value=np.nan)
+    inter_Zmags = interp.interp1d(wfirst_mini, wfirst_mags[:,1], bounds_error=False,  fill_value=np.nan)
+    inter_Ymags = interp.interp1d(wfirst_mini, wfirst_mags[:,2], bounds_error=False,  fill_value=np.nan)
+    inter_Jmags = interp.interp1d(wfirst_mini, wfirst_mags[:,3], bounds_error=False,  fill_value=np.nan)
+    inter_Hmags = interp.interp1d(wfirst_mini, wfirst_mags[:,4], bounds_error=False,  fill_value=np.nan)
+    inter_Fmags = interp.interp1d(wfirst_mini, wfirst_mags[:,5], bounds_error=False,  fill_value=np.nan)
+    inter_Wmags = interp.interp1d(wfirst_mini, wfirst_mags[:,6], bounds_error=False,  fill_value=np.nan)
 
     if np.sum(sample_lowmasses < np.min(cfht_mini)) > 0 or np.sum(sample_lowmasses > np.max(cfht_mini)) > 0:
         print("outside of interpolation range based on the CFHT-parsec SSP file. Need to resolve this.")
@@ -108,16 +109,22 @@ def count_pal5_stars_old(mag_limit, dmod):
 
         #renormalize the luminosity function by computing a normalization factor
         num_20_23= len(sample_gmags[np.logical_and(sample_gmags>=20, sample_gmags<=23)])
-        print ('number of stars between 20 and 23 G mag {}'.format( num_20_23))
+        #print ('number of stars between 20 and 23 G mag {}'.format( num_20_23))
 
         norm= 3000/num_20_23
+        #print (norm)
 
         #compute the difference between distance moduli and offset stars
         dist_mod_And = dmod-dmod_pal5
         #offset_Zmags= sample_Zmags+  dist_mod_And
-        nstars_wfirst = (len(np.where((sample_Zmags < mag_limit-dist_mod_And  ))[0]))*norm
-        return  nstars_wfirst
-    
+        nstars_wfirst = (len(np.where((sample_Zmags < (mag_limit-dist_mod_And)  ))[0]))*norm
+
+        #fig, ax=plt.subplots()
+        #plt.scatter( sample_lowmasses, sample_gmags)
+        #ax.set(ylabel=k, xlabel='Mass ')
+        #j
+        return nstars_wfirst
+
 def read_cmd_file(df, rgc, d_galaxy, mag_limit):
     d_m31= 770*u.kpc
     dmod_m31=5*np.log10(d_m31.to(u.pc).value/10.0)
@@ -136,7 +143,7 @@ def read_cmd_file(df, rgc, d_galaxy, mag_limit):
             
     #appply magnitude cut
     df_final=pd.concat([m31_df, mw_df]).reset_index(drop=True)
-    df_final=(df_final[(df_final.appF087mag < mag_limit) & (df_final.appF087mag >12)]).reset_index(drop=True)
+    df_final=(df_final[df_final.appF087mag < mag_limit]).reset_index(drop=True)
     
     
     #assign RA, DEC, xki based on the data
@@ -271,14 +278,14 @@ def count_pal5_stars(mag_limit, dmod):
     dmod_pal5=16.85
     def read_pandas_isochrones():
         from astropy.io import ascii
-        return ascii.read(path_isochrone+'/cfht_pre2014_isochrones_pal5_3.7.txt').to_pandas()
+        return ascii.read(path_isochrone+'/cfht_pre2014_isochrones_pal5.txt').to_pandas()
 
     def read_roman_isochrones():
         from astropy.io import ascii
-        return ascii.read(path_isochrone+'/roman_isochrones_vega_pal5_3.7.txt').to_pandas()
+        return ascii.read(path_isochrone+'/roman_isochrones_vega_pal5.txt').to_pandas()
     
     nsample=1e6
-    masses= sample_from_powerlaw(-.5, xmin=0.1, xmax=0.85, nsample=nsample)
+    masses= sample_from_powerlaw(-.5, xmin=0.1, xmax=120, nsample=nsample)
     cfht=read_pandas_isochrones()
     roman= read_roman_isochrones()
     comb= pd.concat([cfht, roman]).reset_index()
@@ -394,8 +401,9 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
     MASTER_DF=MASTER_DF.query('MH < -1').reset_index(drop=True)
     print ('finished loading file --------------------------------------')    
     #hg
-    @numba.jit
+    #@numba.jit
     def run_process(d, bw):
+     try: 
         d_galaxy=d*u.kpc
         kpc_conversion = np.pi * d_galaxy / 180.
         roman_fov= 0.52*u.degree*(kpc_conversion /u.degree)
@@ -404,15 +412,12 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
         b=make_box( (center, center), roman_fov.value, roman_fov.value)
         
         dmod_galaxy=5*np.log10(d_galaxy.to(u.pc).value/10.0)
-        N_pal5=int(count_pal5_stars(mag_limit, dmod_galaxy))
+        N_pal5=int(count_pal5_stars_old(mag_limit, dmod_galaxy))
         vls=read_stream_file(N_pal5,gap_center, b, rgc, mhalo, vhalo,  distance_to_hit=distance_to_hit)
 
         bck=read_cmd_file(MASTER_DF, rgc, d_galaxy, mag_limit)
         s=b.select(bck[['x_coord', 'y_coord']])
         img= [np.concatenate([vls[0], s.x.values]), np.concatenate([vls[1], s.y.values])]
-        fname= 'images_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
-        np.save(path_data+'/{}.npy'.format(fname),img)
-        #jjk
         #print ('finished making a cut --------------------------------------')
         #print (img)
         #fig, ax=plt.subplots()
@@ -421,24 +426,30 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
         #plt.show()
 		#print ('number of stars/sq. degree {}'.format(len(img[0])/0.52))
 		#print ('---------------------------------------')
-        #center=np.nanmedian(np.array(rgc.split('_')).astype(float))
-        #b=make_box(box_center, 5, 2)
-        #s=b.select(np.array(img)).T
-        #print (s)
-        #print (len(s[:,0]))
-        #print (len(img[0]))
-        #res=find_gaps(bw, s, nboostrap=5)
-        #print (np.nanmin(s, axis=0), np.nanmax(s, axis=0))
-        return 
+        center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+        b=make_box(box_center, 5, 2)
+        s=b.select(np.array(img)).T
+        print (s)
+        print (len(s[:,0]))
+        print (len(img[0]))
+        res=find_gaps(bw, s, nboostrap=5)
+        print (np.nanmin(s, axis=0), np.nanmax(s, axis=0))
 
-        #return {'bw{:.1f}dmod_galaxy{:.2f}'.format(bw,  dmod_galaxy):  res}
+        return {'bw{:.1f}dmod_galaxy{:.2f}'.format(bw,  dmod_galaxy):  res}
+     except:
+         return {}
     
     from concurrent.futures import ThreadPoolExecutor, wait , ALL_COMPLETED
     from  functools import partial
-    ds=np.arange(500, 3000, 50)
+    
+    #ds=np.arange(3000, 5000, 50)
+    #ds = np.arange(5000, 10000, 100)
+    ds=np.arange(500, 10000, 100)
     #bws=np.arange(0.1,1., 0.1)
-    ds=[770]
-    bws=[0.7]
+    #bws=[0.1, 0.8, 0.9, 1.]
+    bws=np.arange(0.0, 2, 0.1)
+    #ds=[770]
+    #bws=[0.7]
     iterables=list(np.array([(x, y) for x, y in np.array(list(itertools.product(ds, bws)))]).T)
     method=partial(run_process)
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -447,32 +458,95 @@ def run_all(rgc, mag_limit, gap_center, box_size, box_center, distance_to_hit=0.
     results=[x for x in futures]
     #results={}
     #for d in ds:
-    #    for bw in bws:
-    #        results.update(run_process(d, bw))
+    #    for bw in bws
+    # results.update(run_process(d, bw))
+    #        except:
+    #            print ('failed at dmod {} bw {}'.format(d, bw))
     #results= 
     #print (res.keys())
     #diagnostic_plots_one_stream(results)
     #choose a random nunber between o and 10,000 to represent the iteration
     iteration=f'{int(np.random.uniform(0, 10000)):05}'
     #creative filename
-    #fname= 'images_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
+    fname= 'pipeline_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
     #print (fname)
     #print (results)
     #ran into issues with pickle, it kept requiring jax
     #df= pd.DataFrame(results).applymap(np.array)
     #df.to_pickle(path_pipeline+'/{}.pkl'.format(fname))
-    #np.save(path_data+'/{}.npy'.format(fname),results)
+    np.save(path_pipeline+'/{}.npy'.format(fname),results)
     #import json
     #with open(path_pipeline+'/{}.json', 'w+') as fp:
     #    json.dump(results, fp)
 
+def make_mock_images_bckgd_only(mag_limit,rgc):
+    
+    mhalo=5e6
+    vhalo=-50
+    
+    fname=path_isochrone+'simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
+    
+    MASTER_DF=pd.read_csv(fname)
+
+    MASTER_DF=MASTER_DF.query('MH < -1').reset_index(drop=True)
+
+    def run_process(d):
+        try:
+            d_galaxy=d*u.kpc
+            kpc_conversion = np.pi * d_galaxy / 180.
+            roman_fov= 0.52*u.degree*(kpc_conversion /u.degree)
+
+            center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+            b=make_box( (center, center), roman_fov.value, roman_fov.value)
+
+            dmod_galaxy=5*np.log10(d_galaxy.to(u.pc).value/10.0)
+
+            bck=read_cmd_file(MASTER_DF, rgc, d_galaxy, mag_limit)
+
+            img= [s.x.values,  s.y.values]
+
+            center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+        
+            b=make_box(center,roman_fov, roman_fov)
+        
+            s=b.select(np.array(img)).T
+            print ('finished rgc {} d{}'.format(rgc, d))
+            res={'rgc': rgc,
+            'mag_limit': mag_limit,
+            'data': s}
+        
+            return {'dmod_galaxy{:.2f}'.format(dmod_galaxy):  res}
+        except:
+             return {}
+
+    from concurrent.futures import ThreadPoolExecutor, wait , ALL_COMPLETED
+    from  functools import partial
+    ds=np.arange(500, 10000, 10)
+    #iterables=list([ds])
+    #method=partial(run_process)
+    #with ThreadPoolExecutor(max_workers=10) as executor:
+    #    futures=list(executor.map( method, *iterables, timeout=None, chunksize=10))
+
+    results=[run_process(x) for x in ds]
+    
+    iteration=f'{int(np.random.uniform(0, 10000)):05}'
+    fname= 'backgrounds_rgc{}_mhalo{:.2e}_maglimit{}_run{}'.format(rgc, mhalo, mag_limit, iteration)
+    
+    path_bckgd='../data/backgrounds/'
+
+    np.save(path_bckgd+'/{}.npy'.format(fname),results)
+
 
 if __name__ =='__main__':
-    box_size=(5, 2)
-    #for i in range(0, 10):
-    for mag_limit in [27.15, 28.69]:
-        run_all('10_20', mag_limit, (3, 0.5), box_size, (15, 15), distance_to_hit=0.5)
-        run_all('30_40', mag_limit, (3, 0), box_size, (35, 35.2), distance_to_hit=0.7)
-        run_all('50_60', mag_limit, (-4., 0.5), box_size,  (55, 54.7), distance_to_hit=0.8)
+    #box_size=(5, 2)
+    #for i in range(0, 50):
+    #for mag_limit in [27.15, 28.69]:
+    #        run_all('10_20', mag_limit, (3, 0.5), box_size, (15, 15), distance_to_hit=0.5)
+    #        run_all('30_40', mag_limit, (3, 0), box_size, (35, 35.2), distance_to_hit=0.7)
+    #        run_all('50_60', mag_limit, (-4., 0.5), box_size,  (55, 54.7), distance_to_hit=0.8)
     #run mulithread
 
+    for m in [27.15, 28.69]:
+        make_mock_images_bckgd_only(m,'10_20')
+        make_mock_images_bckgd_only(m,'30_40')
+        make_mock_images_bckgd_only(m,'50_60')
