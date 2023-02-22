@@ -691,7 +691,7 @@ def run_bunch_streams(rgc):
                       'distance_to_hit': init_positions[rgc][1],
                       'file_prefix': 'no_self_grav_pal5_rgc{}'.format(rgc) }
 
-        vmax=-50
+        vmax=100
         mhalos=np.array([1e7, 5e6, 2e6])
         rhalos=1005*((mhalos/10**8)**0.5)
         #rhalos=0.1*((mhalos/10**8)**0.5)
