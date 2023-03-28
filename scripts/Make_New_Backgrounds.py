@@ -29,9 +29,9 @@ import glob
 from tqdm import tqdm
 #get_ipython().run_line_magic('matplotlib', 'inline')
 
-
-# In[2]:
-
+#change g0 and i0 and assume their extinction is right
+# go up to 3 kpc for bandwidth
+# 0.1 kpc bandwidth
 
 path_plot = '../figures/'
 path_isochrones = '../data/isochrones/'
@@ -120,11 +120,11 @@ def add_app_magnitudes(vals, ds):
         if k in mag_err_pols.keys():
             mags0=vals[k].values+5*np.log10(ds/10.0)
             mag_err=10**mag_err_pols[k](mags0)
-            mag_err[mags0<15]=1e-3
+            mag_err[mags0<17]=1e-3
             mag_err[mags0>27]=0.5
             mags=np.random.normal(mags0, mag_err)
             #mask again 
-            mag_err[mags<15]=1e-3
+            mag_err[mags<17]=1e-3
             mag_err[mags>27]=0.5
             mags=np.random.normal(mags0, mag_err)
             vals['app'+k]=mags
@@ -167,7 +167,7 @@ def simulate_milky_way(nsample=1e5):
 def simulate_M31(d_M31, nsample=1e5):
     #halo 
     model=M31Halo()
-    vals=interpolate_isochrones( (0.1, 120), (7e9, 13e9) , (-2.5,0.5), nsample)
+    vals=interpolate_isochrones( (0.1, 120), (5e9, 13e9) , (-2.5,0.5), nsample)
     ds=np.concatenate([model.sample_distances(0.1, 100_000, 10000) for x in range(0, 10)])
     ds=np.random.choice(ds, int(nsample))
 
@@ -218,24 +218,24 @@ def simulate(rgc, nsample):
     
     #read data
     data=parse_single_table(path_pandas+'M31_{}kpc_new.vot'.format(rgc)).to_table().to_pandas()
-    data['g-i']= data.g-data.i
+    data['g-i']= data.g0-data.i0
     m31['g-i']=m31.gmag-m31.imag
     mw['g-i']=mw.gmag-mw.imag
     
     #
-    mask_m31=np.logical_and.reduce( [data['g-i'] >0. , data['g-i'] <1,  data.g >22])
-    mask_mw=np.logical_and.reduce( [data['g-i'] >1. , data['g-i'] <4,  data.g <22])
+    mask_m31=np.logical_and.reduce( [data['g-i'] >0. , data['g-i'] <1,  data.g0 >23])
+    mask_mw=np.logical_and.reduce( [data['g-i'] >1. , data['g-i'] <4,  data.g0 <22])
 
     #compute the fraction of stars that are in the true data
     ndata_m31_bounds=len(data[mask_m31])
     ndata_mw_bounds=len(data[mask_mw])
 
     #compute number of stars in sims
-    m31_small=m31.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i.min(), data.i.max(), data.g.min(), data.g.max())))
-    mw_small=mw.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i.min(), data.i.max(), data.g.min(), data.g.max())))
+    m31_small=m31.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max())))
+    mw_small=mw.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max())))
 
     #compute the fraction of simulated stars within these bounds
-    nsim_m31_bounds=len(m31_small[np.logical_and.reduce( [m31_small['g-i'].between(0, 1), m31_small.appgmag> 22])])
+    nsim_m31_bounds=len(m31_small[np.logical_and.reduce( [m31_small['g-i'].between(0, 1), m31_small.appgmag> 23])])
     nsim_mw_bounds=len(mw_small[np.logical_and.reduce( [mw_small['g-i'].between(1, 4), mw_small.appgmag< 22])])
 
     #compute the fraction of stars that we need to simulate
@@ -256,9 +256,9 @@ def simulate(rgc, nsample):
 
     
     #verify that we have reached the target number of stars within the bins
-    query='appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i.min(), data.i.max(), data.g.min(), data.g.max()))
+    query='appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max()))
     bool0= np.logical_and.reduce([m31_final['g-i'].between(0., 1),
-                                m31_final.appgmag> 22])
+                                m31_final.appgmag> 23])
 
     bool1= np.logical_and.reduce([mw_final['g-i'].between(1, 4),
                                 mw_final.appgmag< 22])
@@ -275,7 +275,7 @@ def simulate(rgc, nsample):
     ax.scatter(m31_final_small['g-i'], m31_final_small.appimag,  s=1, marker=',', alpha=0.01, color='k')
     ax.scatter(mw_final_small['g-i'], mw_final_small.appimag,  s=1, marker=',', alpha=0.01, color='k')
 
-    ax1.scatter(data.g-data.i, data.i,  s=1, marker=',', alpha=0.01, color='k')
+    ax1.scatter(data.g0-data.i0, data.i0,  s=1, marker=',', alpha=0.01, color='k')
     ax1.invert_yaxis()
 
     ax.set(xlim=[-1, 4.5], title='Simulation', xlabel='g-i', ylabel='i')
@@ -283,15 +283,16 @@ def simulate(rgc, nsample):
     plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc), bbox_inches='tight')
     
     #save
-    filename=path_isochrones+'/simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
+    filename=path_isochrones+'/simulated_df_at_M31_normalized_extended_rgc{}.h5'.format(rgc)
     
     m31_final['galaxy']='M31'
     mw_final['galaxy']='MW'
     total_final_df=pd.concat([m31_final, mw_final]).reset_index(drop=True)
 
     #assign RA and DEC?
-
-    total_final_df.to_csv(filename)
+    #actaully since I'm just pushing everything down, I don't need anything below 35 mag?
+    total_final_df=total_final_df[np.logical_and(total_final_df.appF087mag<40, total_final_df['MH']<-1)].reset_index(drop=True)
+    total_final_df.to_hdf(filename, key='data')
 
 
 

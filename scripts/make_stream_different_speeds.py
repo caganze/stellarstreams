@@ -691,18 +691,18 @@ def run_bunch_streams(rgc):
                       'distance_to_hit': init_positions[rgc][1],
                       'file_prefix': 'no_self_grav_pal5_rgc{}'.format(rgc) }
 
-        vmax=100
+        vmax=50
         mhalos=np.array([1e7, 5e6, 2e6])
         rhalos=1005*((mhalos/10**8)**0.5)
         #rhalos=0.1*((mhalos/10**8)**0.5)
         #for d in [0.1, 0.5, 1., 2., 3., 4]:
         d=S['distance_to_hit']
-        #for mhalo, rhalo in zip(mhalos, rhalos):
-        #    #S['distance_to_hit']=d
-        #    filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
-        #    run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
+        for mhalo, rhalo in zip(mhalos, rhalos):
+            S['distance_to_hit']=d
+            filename=S['file_prefix']+'_mhalo{:.2e}_vhalo{:.0f}_distance_to_hit{}'.format(mhalo, vmax, d)
+            run_one_stream(S, float(vmax), mhalo, rhalo,  visualize_collision=False, filename=filename, add_more_stars=True)
 
-        run_stream_intact(S)
+        #run_stream_intact(S)
 
 def run_stream_intact(STREAM_CONFIGURATION):
      #integrate the orbit back
