@@ -259,7 +259,7 @@ def make_grid(center, xsize, ysize):
     bounds = [[center-xsize/2, center+xsize/2], [center-ysize/2, center+ysize/2]]
     #then add data around it
     print (bounds)
-    gridding_size = np.array([50, 20]).astype(int)
+    gridding_size = np.array([70, 20]).astype(int)
     grid_linspace = [ np.linspace(bounds[d][0], bounds[d][1], gridding_size[d]) for d in range(2) ]
     meshgrid = np.meshgrid(*grid_linspace, indexing='ij')
     meshgrid_ravel = [ xi.ravel().reshape(-1,1) for xi in meshgrid]
@@ -281,29 +281,45 @@ def run_image(bw, rgc, mag_limit, distance):
     #centering keywords (keywords to get center)
     cent_values={'30_40': ((3.09, 0.1), (35.0, 35.2)), '10_20': ((2.5, 0.55), (15., 15)), '50_60': ((-4, .35),  (55, 55))}
     distances_to_hit={'30_40': 0.7, '10_20':0.5, '50_60': 0.8}
-    box_size=(15, 15)  #original box size, should this be the FOV of Roman? Obviously can't go beyond that >>
+    box_size=(30, 30)  #original box size, should this be the FOV of Roman? Obviously can't go beyond that >>
     img= make_an_image(distance, rgc, mag_limit,  cent_values[rgc][0], box_size, cent_values[rgc][1],  distance_to_hit=distances_to_hit[rgc], vhalo=-50)
-    meshgrid, grid_data, bounds, gridding_size = make_grid(np.array(rgc.split('_')).astype(float).mean(),  5, 2)
+    meshgrid, grid_data, bounds, gridding_size = make_grid(np.array(rgc.split('_')).astype(float).mean(),  7, 2)
     dt=draw_data_round_grid(img, bw, bounds)
 
     res=get_density(np.array(dt).T, gridding_size, grid_data, bw, bounds, nboot=5)
     res['meshgrid']=meshgrid
     res['data']=dt
 
-    #fig, ax=plt.subplots(figsize=(10*1.5, 2*1.5), nrows=2)
-    #ax[0].scatter(img[0], img[1], s=0.1)
-    #ax[0].scatter(grid_data[:,0], grid_data[:,1], s=10, marker='*', color='y')
-    #ax[0].scatter(dt[0], dt[1], s=0.1)
+    fig, ax=plt.subplots(figsize=(10*1.5, 2*1.5), nrows=2)
+    ax[0].scatter(img[0], img[1], s=0.1)
+    ax[0].scatter(grid_data[:,0], grid_data[:,1], s=10, marker='*', color='y')
+    ax[0].scatter(dt[0], dt[1], s=0.1)
 
-    #c=ax[1].contourf(meshgrid[0], meshgrid[1], res['max_eigen'], alpha=0.5, cmap='cubehelix')
-    #_ =ax[1].contour(meshgrid[0], meshgrid[1], res['density'], alpha=0.5, cmap='coolwarm')
-    #ax[1].scatter(dt[0], dt[1], s=0.1)
-    #plt.show()
+    c=ax[1].contourf(meshgrid[0], meshgrid[1], res['max_eigen'], alpha=0.5, cmap='cubehelix')
+    _ =ax[1].contour(meshgrid[0], meshgrid[1], res['density'], alpha=0.5, cmap='coolwarm')
+    ax[1].scatter(dt[0], dt[1], s=0.1)
+    plt.show()
     dmod_galaxy=5*np.log10(distance*1000/10.0)
     return {'bw{:.1f}dmod_galaxy{:.2f}'.format(bw,  dmod_galaxy):  res}
 
+def run_stuff(rgc, mag_limit):
+
+    from concurrent.futures import ThreadPoolExecutor, wait , ALL_COMPLETED
+    from  functools import partial
+
+    def run_process(d, bw):
+         return run_image(bw, rgc, mag_limit, d)
+    ds=[770]
+    bws=[0.7]
+    iterables=list(np.array([(x, y) for x, y in np.array(list(itertools.product(ds, bws)))]).T)
+    method=partial(run_process)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures=list(executor.map( method, *iterables, timeout=None, chunksize=10))
+
+    results=[x for x in futures]
 
 if __name__ =='__main__':
-     run_image(1, '30_40', 27.15, 3_000)
-     run_image(1, '50_60', 27.15, 3_000)
-     run_image(1, '10_20', 27.15, 3_000)
+     run_stuff('30_40', 27.15)
+     #run_image(1, '30_40', 27.15, 3_000)
+     #run_image(1, '50_60', 27.15, 3_000)
+     #run_image(1, '10_20', 27.15, 3_000)

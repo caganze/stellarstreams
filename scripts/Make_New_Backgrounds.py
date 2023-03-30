@@ -177,7 +177,7 @@ def simulate_M31(d_M31, nsample=1e5):
     
     #add the center for M31
     distances_to_use=d_M31.to(u.pc).value+z
-    return add_app_magnitudes(vals,    distances_to_use)
+    return add_app_magnitudes(vals,  distances_to_use)
     
 
 class M31Halo(GalacticComponent):
@@ -211,77 +211,73 @@ class M31Halo(GalacticComponent):
 
 
 def simulate(rgc, nsample):
+    #try to match after <Fe_H <-1?
+
     m31=simulate_M31(d_M31, nsample=nsample)
-    mw=simulate_milky_way(nsample=nsample)
-    print (mw.columns)
-    #hj
-    
+    #m31=(m31[m31.MH<-1]).reset_index(drop=True) #metal-poor cut
     #read data
     data=parse_single_table(path_pandas+'M31_{}kpc_new.vot'.format(rgc)).to_table().to_pandas()
+    #data=(data[data.FeH_phot.values <0.5]).reset_index(drop=True) #remove metalpoor stars
+
     data['g-i']= data.g0-data.i0
     m31['g-i']=m31.gmag-m31.imag
-    mw['g-i']=mw.gmag-mw.imag
-    
-    #
-    mask_m31=np.logical_and.reduce( [data['g-i'] >0. , data['g-i'] <1,  data.g0 >23])
-    mask_mw=np.logical_and.reduce( [data['g-i'] >1. , data['g-i'] <4,  data.g0 <22])
+
+    mask_m31=np.logical_and.reduce( [data['g-i'] >-1, data['g-i'] <1.5,  data.g0 >23.5, data.g0<25])
 
     #compute the fraction of stars that are in the true data
     ndata_m31_bounds=len(data[mask_m31])
-    ndata_mw_bounds=len(data[mask_mw])
 
     #compute number of stars in sims
     m31_small=m31.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max())))
-    mw_small=mw.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max())))
 
     #compute the fraction of simulated stars within these bounds
-    nsim_m31_bounds=len(m31_small[np.logical_and.reduce( [m31_small['g-i'].between(0, 1), m31_small.appgmag> 23])])
-    nsim_mw_bounds=len(mw_small[np.logical_and.reduce( [mw_small['g-i'].between(1, 4), mw_small.appgmag< 22])])
+    nsim_m31_bounds=len(m31_small[np.logical_and.reduce( [m31_small['g-i'].between(-1, 1.5), m31_small.appgmag> 23.5,  m31_small.appgmag< 25])])
 
-    #compute the fraction of stars that we need to simulate
-    print ('currrent number of M31 stars in data {}'.format(ndata_m31_bounds))
-    print ('currrent number of M31 stars in simulation {}'.format(nsim_m31_bounds))
-    print ('----------------------------------------------------------')
-    print ('currrent number of MW stars in data {}'.format(ndata_mw_bounds))
-    print ('currrent number of MW stars in simulation {}'.format(nsim_mw_bounds))
+    f= (ndata_m31_bounds/nsim_m31_bounds)
+
+    m31=simulate_M31(d_M31, nsample=f*nsample)
+    #m31=(m31[m31.MH<-1]).reset_index(drop=True) #metal-poor cuts
+    m31['g-i']=m31.gmag-m31.imag
+    #compute the remaining distribution by looking at the total number
+    #n_m31_below=len(m31.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max()))))
+    n_m31_below= len(m31.query('appgmag >20 & appgmag <21'))
+    n_data_below= len(data[np.logical_and(data.g0>20, data.g0<21)])
+    #figure out  Milky Way stars to compute
+    #n_milky_way= len(data)-n_m31_below
+    #fr_mw=  (n_milky_way/n_m31_below)
+    n_mw= n_data_below-n_m31_below
     
-    #re-simulate M31 and MW with the right number(not great for time saving )
-    #m31_final=m31.sample(int((ndata_m31_bounds/nsim_m31_bounds)*nsample), replace=True)
-    m31_final=simulate_M31(d_M31, nsample=int((ndata_m31_bounds/nsim_m31_bounds)*nsample))
-    mw_final=simulate_milky_way(nsample=int(  (ndata_mw_bounds/nsim_mw_bounds)*nsample))
+    mw=simulate_milky_way(nsample= int(nsample))
+    #redraw the mw population such that the luminosity function is the missing
+    #mw=(mw[mw.MH<-1]).reset_index(drop=True) #metal-poor
+
+    n_mw_below= len(mw.query('appgmag >20 & appgmag <21'))
+    f2= n_mw/n_mw_below
+    mw_final0= mw.sample(frac=f2, replace=True)
+
+    #ig, ax=plt.subplots()
+    #plt.hist(m31['g-i'], bins=32, histtype='step')
+    #plt.hist(data['g-i'], bins=32, histtype='step', linewidth=3, color='k')
+    #plt.hist(m31['appgmag'], bins=32, histtype='step', range=[18, 25.5], label='M31')
+    #plt.hist(mw_final0['appgmag'],  bins=32, histtype='step',  range=[18, 25.5], label='MW')
+    #plt.hist(data.g0, bins=32, histtype='step', range=[18, 25.5],  linewidth=3, color='k')
+    #ax.set(yscale='log')
+    #plt.legend()
+
+    #ax.set(yscale='log', title='f{:.2f}'.format(f))
+    #plt.show()
+    #njk
+
+    m31_final=m31
+    mw_final=simulate_milky_way(nsample= int(len(mw_final0)))
+    #mw_final=(mw_final[mw_final.MH<-1]).reset_index(drop=True)
     #mw_final=mw.sample(int((ndata_mw_bounds/nsim_mw_bounds)*nsample), replace=True)
 
     m31_final['g-i']= m31_final.appgmag-m31_final.appimag
     mw_final['g-i']= mw_final.appgmag-mw_final.appimag
 
     
-    #verify that we have reached the target number of stars within the bins
-    query='appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max()))
-    bool0= np.logical_and.reduce([m31_final['g-i'].between(0., 1),
-                                m31_final.appgmag> 23])
-
-    bool1= np.logical_and.reduce([mw_final['g-i'].between(1, 4),
-                                mw_final.appgmag< 22])
-
-
-    print ('new number of M31 stars {}'.format(len(m31_final[bool0].query(query))))
-    print ('new number of MW stars {}'.format(len(mw_final[bool1].query(query))))
-    
-    m31_final_small=m31_final.query(query)
-    mw_final_small=mw_final.query(query)
-    
-    #plot
-    fig, (ax, ax1)=plt.subplots(ncols=2, figsize=(12, 4), sharey=True)
-    ax.scatter(m31_final_small['g-i'], m31_final_small.appimag,  s=1, marker=',', alpha=0.01, color='k')
-    ax.scatter(mw_final_small['g-i'], mw_final_small.appimag,  s=1, marker=',', alpha=0.01, color='k')
-
-    ax1.scatter(data.g0-data.i0, data.i0,  s=1, marker=',', alpha=0.01, color='k')
-    ax1.invert_yaxis()
-
-    ax.set(xlim=[-1, 4.5], title='Simulation', xlabel='g-i', ylabel='i')
-    ax1.set(xlim=[-1, 4.5],  title='Pandas Data', xlabel='g-i', ylabel='i')
-    plt.savefig(path_plot+'/simulated_cmd{}.jpeg'.format(rgc), bbox_inches='tight')
-    
+    #
     #save
     filename=path_isochrones+'/simulated_df_at_M31_normalized_extended_rgc{}.h5'.format(rgc)
     
@@ -289,9 +285,15 @@ def simulate(rgc, nsample):
     mw_final['galaxy']='MW'
     total_final_df=pd.concat([m31_final, mw_final]).reset_index(drop=True)
 
+    #rescale the thing to gmag luminosity function without re-simulating, just overall scaling 
+    number_sim= len(total_final_df[np.logical_and(total_final_df.appgmag> 23.5, total_final_df.appgmag<24.)])
+    number_obs= len(data[np.logical_and(data.g0>23.5, data.g0<24.)])
+
+    total_final_df=total_final_df.sample(n=int(len(total_final_df)*number_obs/number_sim), replace=True)
     #assign RA and DEC?
     #actaully since I'm just pushing everything down, I don't need anything below 35 mag?
-    total_final_df=total_final_df[np.logical_and(total_final_df.appF087mag<40, total_final_df['MH']<-1)].reset_index(drop=True)
+    #total_final_df=total_final_df[np.logical_and(total_final_df.appF087mag<40, total_final_df['MH']<-1)].reset_index(drop=True)
+    total_final_df=total_final_df[total_final_df.appF087mag<40].reset_index(drop=True)
     total_final_df.to_hdf(filename, key='data')
 
 
@@ -303,4 +305,3 @@ for rgc in ['10_20', '30_40', '50_60']:
     #to move to another galaxy ---> the number of stars are normalized correct
     #just add the offset in distance modulus to the CMD
     #make roman cuts 
-
