@@ -21,6 +21,7 @@ path_data='../data/images/'
 path_streamdata='../data/stream/'
 path_pipeline='../data/pipeline/'
 path_pandas= '../data/pandas/'
+path_bckgds= '../data/backgrounds/'
 path_plot='../figures/'
 isochrone_path=path_isochrone
 
@@ -318,8 +319,29 @@ def run_stuff(rgc, mag_limit):
 
     results=[x for x in futures]
 
+def make_empty_backgrounds(rgc, d, mag_limit):
+    fname=path_isochrone+'simulated_df_at_M31_normalized_extended_rgc{}.h5'.format(rgc)
+
+    MASTER_DF=pd.read_hdf(fname, key='data')
+  
+    d_galaxy=d*u.kpc
+    kpc_conversion = np.pi * d_galaxy / 180.
+    roman_fov= 0.52*u.degree*(kpc_conversion /u.degree)
+
+    center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+    b=make_box( (center, center), 2*roman_fov.value, 2*roman_fov.value)
+
+    dmod_galaxy=5*np.log10(d_galaxy.to(u.pc).value/10.0)
+
+    bck=read_cmd_file(MASTER_DF, rgc, d_galaxy, mag_limit)
+    s=b.select(bck[['x_coord', 'y_coord']])
+    img= [s.x.values, s.y.values]
+
+    fname=path_bckgds+'/backgrounds_dmod{:.2f}rgc{}mlimit{:.2f}.npy'.format(dmod_galaxy, rgc, mag_limit)
+
+    np.save(fname, img, allow_pickle=True)
+
+    return img
+
 if __name__ =='__main__':
-     run_stuff('30_40', 27.15)
-     #run_image(1, '30_40', 27.15, 3_000)
-     #run_image(1, '50_60', 27.15, 3_000)
-     #run_image(1, '10_20', 27.15, 3_000)
+    make_empty_backgrounds('10_20', 770, 27.15)
