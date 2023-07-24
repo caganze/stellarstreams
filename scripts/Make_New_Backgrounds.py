@@ -66,10 +66,18 @@ def sample_kroupa_imf(nsample, massrange=[0.1, 10]):
     masses= np.random.choice(m[mask], int(nsample))
     return masses
 
-def interpolate_isochrones(mass_range, age_range, met_range, nsample):
-    
+def sample_metallicities(nsample, met_range, rgc):
+    #draw metallicities from underlying distribution
+    data=parse_single_table(path_pandas+'M31_{}kpc_new.vot'.format(rgc)).to_table().to_pandas().FeH_phot.values
+    #just return random and replace (no worries about smoothness of CDF)
+    data=data[np.logical_and(data>met_range[0], data<met_range[1])]
+    return np.random.choice(data, int(nsample), replace=True)
+
+
+def interpolate_isochrones(mets, mass_range, age_range, nsample):
     isos= combined_isochrones()
     logage_range=np.log10(age_range)
+    met_range=[np.nanmin(mets), np.nanmax(mets)]
     limits=np.concatenate([mass_range, logage_range, met_range])
     
     query='(Mini > {} & Mini <{}) & (logAge > {} & logAge <  {}) & (MH > {} & MH < {})'.format(*limits)
@@ -77,38 +85,42 @@ def interpolate_isochrones(mass_range, age_range, met_range, nsample):
 
     nisos_=len(np.unique(isos.MH))*len(np.unique(isos.logAge))
 
-    masses=sample_kroupa_imf(nsample/nisos_, massrange=mass_range)
+    masses=sample_kroupa_imf(nsample, massrange=mass_range)
+    
+    ages= np.unique(isos.logAge)
+    ages= ages[~np.isnan(ages)]
     
     @numba.jit
-    def interpolate_one_iso(masses, age, met):
-        dfn=isos.query('logAge=={} & MH=={}'.format(age, met))
+    def interpolate_one_iso(masses, mets, age):
+        dfn=isos.query('logAge=={}'.format(age))
         interpolated={}
         for k in mag_keys:
             x= np.log10(dfn.Mini.values)
-            y= dfn[k].values
-            nans=np.logical_or(np.isnan(x), np.isnan(y))
-            # 
-            f=interp1d(x[~nans], y[~nans], fill_value =np.nan, bounds_error=False)(np.log10(masses))
-            interpolated.update({k: f})
-            #interpolated.update({k:griddata(x[~nans], y[~nans], np.log10(masses) , fill_value=np.nan, method='linear', rescale=False)})
+            y= dfn.MH.values
+            z= dfn[k].values
+            nans=np.logical_or.reduce([np.isnan(x), np.isnan(y), np.isnan(z)]) #remove whiye dwarfs
+            x=x[~nans]
+            y=y[~nans]
+            z=z[~nans]
+            if len(x) ==0 or len(y)==0 or len(z)==0:
+                pass
+            else:
+                interpolated.update({k:griddata((x, y), z, (np.log10(masses), mets),
+                                            fill_value=np.nan, rescale=True,  \
+                                            method='nearest')})
         return interpolated
     
     final_df=[]
-    for logAge in tqdm(np.unique(isos.logAge)):
-        try:
-            for MH in np.unique(isos.MH):
-                xvs=interpolate_one_iso(masses, logAge,  MH)
-                vs=pd.DataFrame.from_records(xvs)
-                vs['logAge']=logAge
-                vs['MH']=MH
-                vs['Mini']=masses
-                final_df.append(vs)
-                #print ('finished, {} {}'.format(logAge, MH))
-        except:
-                #print ('failed, {} {}'.format(logAge, MH))
-                continue
-    
+    for logAge in tqdm(ages):
+            xvs=interpolate_one_iso(masses, mets, logAge)
+            vs=pd.DataFrame.from_records(xvs)
+            vs['logAge']=logAge
+            vs['MH']=mets
+            vs['Mini']=masses
+            final_df.append(vs)
+            
     return  pd.concat(final_df).sample(int(nsample), replace=True).reset_index(drop=True)
+
 
 def add_app_magnitudes(vals, ds):
     #add intrinsic scatter of 0.1 magnitude --> varies but simplicity
@@ -137,22 +149,25 @@ def add_app_magnitudes(vals, ds):
 
 
 def simulate_milky_way(nsample=1e5):
-    #milky way disk
-    vals=interpolate_isochrones( (0.1, 120), (0.01e9, 13e9) , (-1,0.5), nsample)
+    #use uniform metallicities
+    mets= np.random.uniform(-1, 0.5, nsample)
+    vals=interpolate_isochrones(mets,(0.1, 120), (0.01e9, 13e9), nsample)
     model=Disk(L=2600, H=350)
     ds=np.concatenate([model.sample_distances(0.1, 100_000, 10000) for x in range(0, 10)])
     ds=np.random.choice(ds, int(nsample))
     vals=add_app_magnitudes(vals, ds)
     
     #miky way thick disk
-    vals1=interpolate_isochrones( (0.1, 120), (8e9, 13e9) , (-1,0.5), nsample)
+    mets= np.random.uniform(-1, 0.5, nsample)
+    vals1=interpolate_isochrones(mets,(0.1, 120), (0.01e9, 13e9), nsample)
     model=Disk(L=3600, H=900)
     ds=np.concatenate([model.sample_distances(0.1, 100_000, 10000) for x in range(0, 10)])
     ds=np.random.choice(ds, int(nsample))
     vals1=add_app_magnitudes(vals1, ds)
     
     #milky way halo
-    vals2=interpolate_isochrones( (0.1, 120), (10e9, 13e9) , (-2.5,-1), nsample)
+    mets= np.random.uniform(-2.5, -1, nsample)
+    vals2=interpolate_isochrones(mets,(0.1, 120), (0.01e9, 13e9), nsample)
     model=Halo()
     ds=np.concatenate([model.sample_distances(0.1, 100_000, 10000) for x in range(0, 10)])
     ds=np.random.choice(ds, int(nsample))
@@ -164,10 +179,11 @@ def simulate_milky_way(nsample=1e5):
                       vals2.sample(int(0.0025*nsample))]).reset_index(drop=True)
                       
 
-def simulate_M31(d_M31, nsample=1e5):
+def simulate_M31(d_M31, rgc, nsample=1e5):
     #halo 
     model=M31Halo()
-    vals=interpolate_isochrones( (0.1, 120), (5e9, 13e9) , (-2.5,0.5), nsample)
+    mets= sample_metallicities(nsample, [-2, 0.25], rgc)
+    vals=interpolate_isochrones( mets,(0.1, 120), (5e9, 13e9) , nsample)
     ds=np.concatenate([model.sample_distances(0.1, 100_000, 10000) for x in range(0, 10)])
     ds=np.random.choice(ds, int(nsample))
 
@@ -225,12 +241,12 @@ def simulate(rgc, nsample):
     mw_small=mw.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max())))
     nsim_mw_bounds=len(mw_small[np.logical_and.reduce( [mw_small['g-i']>2, mw_small['g-i']<3, mw_small.appimag> 18,  mw_small.appimag< 21])])
     f= (ndata_mw_bounds/nsim_mw_bounds)
-    mw1=simulate_milky_way(nsample=f*nsample)
+    mw1=simulate_milky_way(nsample=int(f*nsample))
     mw1['g-i']=mw1.gmag-mw1.imag
     mw1['galaxy']='MW'
     
     #random number of m31
-    m31=simulate_M31(d_M31, nsample=nsample)
+    m31=simulate_M31(d_M31, rgc, nsample=nsample)
     m31['g-i']= m31.appgmag-m31.appimag
     
     total_final_df=pd.concat([m31, mw1]).reset_index(drop=True)
@@ -238,55 +254,97 @@ def simulate(rgc, nsample):
 
     #RESCALE THE NUMBER OF m31 TO MATCH THE TOTAL IN THESE REGION
     #sorry I might have to use a while loop
-    mw1['galaxy']='M31'
+    mw1['galaxy']='MW'
 
     number_sim= len(tot_small[np.logical_and.reduce([tot_small['g-i'] >0.5, tot_small['g-i']<2, tot_small.appimag> 21.5, tot_small.appimag<23.5])])
     number_mw_obs= len( mw1[np.logical_and.reduce([ mw1['g-i'] >0.5,  mw1['g-i']<2,  mw1.appimag> 21.5,  mw1.appimag<23.5])])
     number_obs= len(data[np.logical_and.reduce([data['g-i']>0.5, data['g-i'] <2, data.i0>21.5, data.i0<23.5])])
 
-    fudge_factor=10
+    fudge_factor=1
     while number_sim < number_obs:
-        nm31=nsample*fudge_factor #number_mw_obs/number_sim)*
-        m311=simulate_M31(d_M31, nsample=int(nm31))
-        m311['g-i']= m311.appgmag-m311.appimag
+        nm31=fudge_factor*nsample
+        m311=simulate_M31(d_M31, rgc, nsample=int(nm31))
+        m311['galaxy']='M31'
+        m311['g-i']= m311.appgmag.values-m311.appimag.values
         total_final_df0=pd.concat([m311, mw1]).reset_index(drop=True)
         tot_small= total_final_df0.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max())))
         number_sim= len(tot_small[np.logical_and.reduce([tot_small['g-i'] >0.5, tot_small['g-i']<2, tot_small.appimag> 21.5, tot_small.appimag<23.5])])
         number_obs= len(data[np.logical_and.reduce([data['g-i']>0.5, data['g-i'] <2, data.i0>21.5, data.i0<23.5])])
-        fudge_factor= fudge_factor*1.5
-        fig, ax=plt.subplots()
-        plt.hist(mw1.appgmag, bins=32, histtype='step',  range=[18, 25.5], linewidth=3, linestyle='--')
-        plt.hist(m311.appgmag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, linestyle='--')
-        plt.hist(total_final_df0.appgmag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, color='k')
-        plt.hist(data.g0, bins=32,  range=[18, 25.5], linewidth=3,  color='#0074D9')
-        plt.show()
-    #ax.set(yscale='log')
+        fudge_factor= fudge_factor*1.2
 
+    total_final_df=total_final_df0
+    #total_final_df=total_final_df[total_final_df.appF087mag<31].reset_index(drop=True)
+    #total_final_df.to_hdf(filename, key='data') 
+    
+    #add x_coord and y_coord based on M31
+
+    d_galaxy=770*u.Mpc
+    kpc_conversion = np.pi * d_galaxy / 180.
+    #
+    total_final_df=total_final_df[total_final_df.appF087mag<31].reset_index(drop=True)
+    
+    total_final_df['RA']= np.random.choice(data.RA, len(total_final_df))
+    total_final_df['Dec']= np.random.choice(data.Dec, len(total_final_df))
+
+    s=SkyCoord(ra=total_final_df.RA, dec=total_final_df.Dec,frame = 'icrs', unit = (u.hourangle, u.deg))
+
+    center=np.nanmedian(np.array(rgc.split('_')).astype(float))
+
+    shift_x=np.nanmedian(kpc_conversion.value*(s.ra.to(u.degree).value))-center
+    shift_y=np.nanmedian(kpc_conversion.value*(s.dec.to(u.degree).value))-center
+
+    xs=kpc_conversion.value*(s.ra.to(u.degree).value)-shift_x
+    ys=kpc_conversion.value*(s.dec.to(u.degree).value)-shift_y
+
+    #df_final['x_coord']=np.random.uniform(xs.min(), xs.max(), len(xs))
+    #df_final['y_coord']=np.random.uniform(ys.min(), ys.max(), len(ys))
+    
+    total_final_df['x_coord']=np.random.uniform(xs.min(), xs.max(), len(xs))
+    total_final_df['y_coord']=np.random.uniform(ys.min(), ys.max(), len(ys))
+
+    cols=[ 'MH', 'appgmag', 'appimag', 
+       'appF062mag','appF087mag', 'g-i',
+       'galaxy', 'x_coord', 'y_coord']
     
     total_final_df=total_final_df[total_final_df.appF087mag<31].reset_index(drop=True)
-    #total_final_df.to_hdf(filename, key='data') 
-
-    cols=[ 'MH', 'appgmag', 'appgmag_er', 'appimag', 'appimag_er',
-       'appF062mag', 'appF062mag_er', 'appF087mag', 'appF087mag_er', 'g-i',
-       'galaxy']
-    
-    fig, ax=plt.subplots()
-    plt.hist(mw1.appgmag, bins=32, histtype='step',  range=[18, 25.5], linewidth=3, linestyle='--')
-    plt.hist(m31.appgmag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, linestyle='--')
-    plt.hist(total_final_df.appgmag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, color='k')
-    plt.hist(data.g0, bins=32,  range=[18, 25.5], linewidth=3,  color='#0074D9')
-    #ax.set(yscale='log')
     plt.savefig('luminosity_function_rgc{}'.format(rgc))
     filename=path_isochrones+'/simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
-    
+
     total_final_df[cols].to_csv(filename, compression='infer')
+    
+    #fig, ax= plt.subplots()
+
+    #ax.scatter(total_final_df['x_coord'], total_final_df['y_coord'], s=0.1, c='k')
+
+    fig, ax=plt.subplots(ncols=2, figsize=(10, 4))
+    ax[0].hist(mw1.appgmag, bins=32, histtype='step',  range=[18, 25.5], linewidth=3, linestyle='--')
+    ax[0].hist(m311.appgmag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, linestyle='--')
+    ax[0].hist(total_final_df0.appgmag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, color='k')
+    ax[0].hist(data.g0, bins=32,  range=[18, 25.5],   color='#7FDBFF')
+    #ax.set(yscale='log')
+
+    ax[1].hist(mw1.appimag, bins=32, histtype='step',  range=[18, 25.5], linewidth=3, linestyle='--')
+    ax[1].hist(m311.appimag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, linestyle='--')
+    ax[1].hist(total_final_df0.appimag, bins=32,  histtype='step', range=[18, 25.5], linewidth=3, color='k')
+    ax[1].hist(data.i0, bins=32,  range=[18, 25.5],   color='#7FDBFF')
+    #ax.set(yscale='log')
+
+    ax[0].set(xlabel='g0-i0', ylabel='g0')
+    ax[1].set(xlabel='g0-io', ylabel='i0')
+    
+    plt.tight_layout()
+    #total_final_df=total_final_df[total_final_df.appF087mag<31].reset_index(drop=True)
+    plt.savefig('luminosity_function_rgc{}'.format(rgc))
+    #filename=path_isochrones+'/simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
+    
+    #total_final_df[cols].to_csv(filename, compression='infer')
 
 
 
 d_M31=770*u.kpc
 nsample=1e5
-for rgc in ['30_40', '50_60', '10_20']:
+for rgc in ['10_20', '30_40', '50_60']:
     simulate(rgc, nsample)
     #to move to another galaxy ---> the number of stars are normalized correct
     #just add the offset in distance modulus to the CMD
-    #make roman cuts 
+    #make roman cuts `
