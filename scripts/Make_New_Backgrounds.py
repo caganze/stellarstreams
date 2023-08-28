@@ -17,7 +17,7 @@ from tqdm import tqdm
 from popsims.galaxy import Disk, Halo, GalacticComponent
 from popsims import sample_from_powerlaw
 import popsims
-from gala.units import UnitSystem
+#from gala.units import UnitSystem
 import pandas as pd
 from scipy.interpolate import interp1d, griddata, InterpolatedUnivariateSpline
 from astropy.io.votable import parse_single_table
@@ -55,7 +55,8 @@ def combined_isochrones():
     for f in fls:
         dfs.append(ascii.read(f).to_pandas())
     comb_isos=pd.concat(dfs).reset_index(drop=True)
-    return comb_isos    
+    #remove white dwarfs --> anything with z >25 or g >25
+    return comb_isos      
 
 def sample_kroupa_imf(nsample, massrange=[0.1, 10]):
     m0=sample_from_powerlaw(-0.3, xmin=0.03, xmax= 0.08, nsample=int(nsample))
@@ -90,7 +91,7 @@ def interpolate_isochrones(mets, mass_range, age_range, nsample):
     ages= np.unique(isos.logAge)
     ages= ages[~np.isnan(ages)]
     
-    @numba.jit
+    #@numba.jit
     def interpolate_one_iso(masses, mets, age):
         dfn=isos.query('logAge=={}'.format(age))
         interpolated={}
@@ -102,12 +103,16 @@ def interpolate_isochrones(mets, mass_range, age_range, nsample):
             x=x[~nans]
             y=y[~nans]
             z=z[~nans]
-            if len(x) ==0 or len(y)==0 or len(z)==0:
-                pass
-            else:
+            try:
+                #f= interp2d(x, y, z,kind='linear')
+                #zs=np.concatenate([f(xi, yi) for xi, yi in zip(np.log10(masses), mets)])
+                #interpolated.update({k:zs})
                 interpolated.update({k:griddata((x, y), z, (np.log10(masses), mets),
                                             fill_value=np.nan, rescale=True,  \
-                                            method='nearest')})
+                                            method='linear')})
+            except:
+                #ignore interpolation errors for now ugh
+                pass
         return interpolated
     
     final_df=[]
@@ -182,9 +187,9 @@ def simulate_milky_way(nsample=1e5):
 def simulate_M31(d_M31, rgc, nsample=1e5):
     #halo 
     model=M31Halo()
-    mets= sample_metallicities(nsample, [-2, 0.25], rgc)
+    mets= sample_metallicities(nsample, [-3, 0.25], rgc)
     vals=interpolate_isochrones( mets,(0.1, 120), (5e9, 13e9) , nsample)
-    ds=np.concatenate([model.sample_distances(0.1, 100_000, 10000) for x in range(0, 10)])
+    ds=np.concatenate([model.sample_distances(0.1, 100_000, 100000) for x in range(0, 10)])
     ds=np.random.choice(ds, int(nsample))
 
     l= 2*np.pi*np.random.uniform(0, 1, len(ds))
@@ -193,8 +198,9 @@ def simulate_M31(d_M31, rgc, nsample=1e5):
     
     #add the center for M31
     distances_to_use=d_M31.to(u.pc).value+z
-    return add_app_magnitudes(vals,  distances_to_use)
-    
+    vals=add_app_magnitudes(vals,  distances_to_use)
+    vals=vals[vals.appF087mag<31]
+    return vals
 
 class M31Halo(GalacticComponent):
     """
@@ -234,12 +240,12 @@ def simulate(rgc, nsample):
     mw['g-i']=mw.gmag-mw.imag
     #compute number of stars in sims
     
-    mask_mw=np.logical_and.reduce( [data['g-i'] >2, data['g-i'] <3,  data.i0 >18, data.i0<21])
+    mask_mw=np.logical_and.reduce( [data['g-i'] >2, data['g-i'] <3,  data.i0 >19.5, data.i0<21])
     ndata_mw_bounds=len(data[mask_mw])
 
     #compute number of  MWstars in sims
     mw_small=mw.query('appimag > {} & appimag< {}  & appgmag > {} & appgmag< {}'.format(*(data.i0.min(), data.i0.max(), data.g0.min(), data.g0.max())))
-    nsim_mw_bounds=len(mw_small[np.logical_and.reduce( [mw_small['g-i']>2, mw_small['g-i']<3, mw_small.appimag> 18,  mw_small.appimag< 21])])
+    nsim_mw_bounds=len(mw_small[np.logical_and.reduce( [mw_small['g-i']>2, mw_small['g-i']<3, mw_small.appimag> 19.5,  mw_small.appimag< 21])])
     f= (ndata_mw_bounds/nsim_mw_bounds)
     mw1=simulate_milky_way(nsample=int(f*nsample))
     mw1['g-i']=mw1.gmag-mw1.imag
@@ -272,7 +278,33 @@ def simulate(rgc, nsample):
         number_obs= len(data[np.logical_and.reduce([data['g-i']>0.5, data['g-i'] <2, data.i0>21.5, data.i0<23.5])])
         fudge_factor= fudge_factor*1.2
 
+    
     total_final_df=total_final_df0
+    #we neeed to rescale the total number of stars at g0=22
+    ncurrent= len(total_final_df[np.logical_and.reduce([total_final_df.appimag>20, total_final_df.appgmag >20, total_final_df.appgmag<23.5, total_final_df.appimag<23.5]) ])
+    ndata= len(data[np.logical_and.reduce([data.i0>20, data.i0<23.5, data.g0>20, data.i0<23.5])])
+
+    #missing
+    missing= (ndata/ncurrent)*len(total_final_df)
+
+   # while  missing > len(total_final_df):
+    if False:
+        #compute needed number
+        rmw_m31= len(m311)/len(mw1)
+
+        m31_ext= simulate_M31(d_M31, rgc, nsample= int(missing/(rmw_m31+1)))
+        m31_ext['galaxy']='M31'
+
+        mw_ext= simulate_milky_way(nsample=int((missing/(rmw_m31+1)/rmw_m31)))
+        mw_ext['galaxy']='MW'
+
+        #append
+        final_missing= pd.concat([m31_ext, mw_ext])
+
+        total_final_df=pd.concat([final_missing, total_final_df]).reset_index(drop=True)
+    #ax.set(yscale='log')
+
+    #total_final_df=total_final_df0
     #total_final_df=total_final_df[total_final_df.appF087mag<31].reset_index(drop=True)
     #total_final_df.to_hdf(filename, key='data') 
     
@@ -342,9 +374,10 @@ def simulate(rgc, nsample):
 
 
 d_M31=770*u.kpc
-nsample=1e5
-for rgc in ['10_20', '30_40', '50_60']:
+nsample=1e6
+for rgc in ['30_40', '50_60']:
     simulate(rgc, nsample)
     #to move to another galaxy ---> the number of stars are normalized correct
     #just add the offset in distance modulus to the CMD
     #make roman cuts `
+

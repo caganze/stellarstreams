@@ -20,7 +20,7 @@ from astropy.io.votable import parse_single_table
 path_isochrone='../data/isochrones/'
 path_data='../data/images/'
 path_streamdata='../data/stream/'
-path_pipeline='../data/pipeline/'
+path_pipeline='../data/pipelineWithMetCuts/'#pipeline/'
 path_pandas= '../data/pandas/'
 path_plot='../figures/'
 isochrone_path=path_isochrone
@@ -33,14 +33,15 @@ mag_keys=['gmag', 'imag', 'F062mag', 'F087mag']
 mhalo=5e6
 
 use_cols=['appF087mag', 'galaxy', 'MH', 'x_coord', 'y_coord']
-rgcs=['30_40']
+rgcs=['50_60']
 def make_master_files():
     master_dfs={}
     for rgc in rgcs: 
         #['10_20','30_40', '50_60']:
         fname=path_isochrone+'simulated_df_at_M31_normalized_extended_rgc{}.csv'.format(rgc)
-        df_final=pd.read_csv(fname, usecols=use_cols).query('MH<-1').reset_index(drop=True)
+        df_final=pd.read_csv(fname, usecols=use_cols).reset_index(drop=True) #no metallicity cuts for now 
         #add positions
+        df_final=(df_final[df_final.MH<-1]).reset_index(drop=True)
         data=parse_single_table(path_pandas+'M31_{}kpc_new.vot'.format(rgc)).to_table().to_pandas()
         #print (len(data))
         #print (data.columns)
@@ -159,55 +160,6 @@ def read_cmd_file_no_rescale(rgc, d_galaxy, mag_limit):
     #df_final['x_coord']=kpc_conversion.value*(s.ra.to(u.degree).value)-shift_x
     #df_final['y_coord']=kpc_conversion.value*(s.dec.to(u.degree).value)-shift_y
 
-    return df_final
-
-def read_cmd_file_old(df, rgc, d_galaxy, mag_limit):
-    d_m31= 770*u.kpc
-    dmod_m31=5*np.log10(d_m31.to(u.pc).value/10.0)
-
-    
-    dmod_galaxy=5*np.log10(d_galaxy.to(u.pc).value/10.0)
-    dmod_diff= dmod_galaxy-dmod_m31
-    kpc_conversion = np.pi * d_galaxy / 180.
-    
-    #put to the desired distance modulus 
-    mw_df= df.query("galaxy == 'MW'").reset_index(drop=True)
-    m31_df= df.query("galaxy =='M31'").reset_index(drop=True)
-    
-    for k in ['appF062mag', 'appF087mag', 'appgmag', 'appimag']:
-         m31_df[k]=  m31_df[k].values+dmod_diff
-            
-    #appply magnitude cut
-    df_final=pd.concat([m31_df, mw_df]).reset_index(drop=True)
-    df_final=(df_final[df_final.appF087mag < mag_limit]).reset_index(drop=True)
-    
-    
-    #assign RA, DEC, xki based on the data
-    from astropy.io.votable import parse_single_table
-    data=parse_single_table(path_pandas+'M31_{}kpc_new.vot'.format(rgc)).to_table().to_pandas()
-
-    print (data)
-
-    
-    for k in ['RA', 'Dec','xki', 'eta']:
-        df_final[k]=np.random.choice(data[k].values, len(df_final), replace=True)
-              
-    s=SkyCoord(ra=df_final.RA, dec=df_final.Dec,frame = 'icrs', unit = (u.hourangle, u.deg))
-    
-    center=np.nanmedian(np.array(rgc.split('_')).astype(float))
-              
-    shift_x=np.nanmedian(kpc_conversion.value*(s.ra.to(u.degree).value))-center
-    shift_y=np.nanmedian(kpc_conversion.value*(s.dec.to(u.degree).value))-center
-    
-    #df_final['x_coord']=kpc_conversion.value*(s.ra.to(u.degree).value)-shift_x
-    #df_final['y_coord']=kpc_conversion.value*(s.dec.to(u.degree).value)-shift_y
-
-    xs=kpc_conversion.value*(s.ra.to(u.degree).value)-shift_x
-    ys=kpc_conversion.value*(s.dec.to(u.degree).value)-shift_y
-    
-    df_final['x_coord']=np.random.uniform(xs.min(), xs.max(), len(xs))
-    df_final['y_coord']=np.random.uniform(ys.min(), ys.max(), len(ys))
-    
     return df_final
 
 def count_pal5_stars(mag_limit, dmod):
@@ -353,7 +305,7 @@ def make_an_image(d, rgc, mag_limit,  gap_center, box_size, box_center, distance
     roman_fov= 0.52*u.degree*(kpc_conversion /u.degree)
 
     center=np.nanmedian(np.array(rgc.split('_')).astype(float))
-    b=make_box( (center, center), roman_fov.value, roman_fov.value)
+    b=make_box( (center, center), 30, 6)
 
     dmod_galaxy=5*np.log10(d_galaxy.to(u.pc).value/10.0)
     N_pal5=int(count_pal5_stars(mag_limit, dmod_galaxy))
@@ -544,7 +496,7 @@ def run_stuff(rgc, mag_limit):
 
     def run_process(d, bw):
          return run_image(bw, rgc, mag_limit, d)
-    ds= np.arange(500, 10000, 100)
+    ds= np.arange(500, 10000, 10)
     bws=np.arange(0.1, 2, 0.1)
     #bws=[0.7, 0.8]
     iterables=list(np.array([(x, y) for x, y in np.array(list(itertools.product(ds, bws)))]).T)
@@ -566,10 +518,10 @@ def run_stuff(rgc, mag_limit):
 
 if __name__ =='__main__':
     #vals=run_image(0.7, '10_20', 28.69, 800)
-    vals= [ run_offcentered_image(bw, '30_40', 27.15, 1000) for bw in np.arange(0.5, 1, 0.1)]
-    np.save('{}.npy'.format('appendix_offcenter'),vals)
+    #vals= [ run_offcentered_image(bw, '30_40', 27.15, 1000) for bw in np.arange(0.5, 1, 0.1)]
+    #np.save('{}.npy'.format('appendix_offcenter'),vals)
     #np.save('test.npy', vals)
-    jk
+    #jk
     for i in range(0, 10):
         for m in [27.15, 28.69]: 
             for rgc in rgcs:
